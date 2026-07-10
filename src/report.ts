@@ -5,6 +5,7 @@ export * from "./report/overlap";
 export * from "./report/prohibited";
 export * from "./report/quality";
 export * from "./report/templates/labels";
+export * from "./report/templates/presentation";
 export * from "./report/wording";
 
 import type { DiagnosisResult, ReportFragment } from "./types";

@@ -372,6 +372,7 @@ export interface PersonalizationAnchor {
   summary: string;
   confidence: Confidence;
   opportunityLimited?: boolean;
+  defenseCategory?: DefenseCategory;
 }
 
 export interface ReportEvidence {
@@ -388,7 +389,13 @@ export interface ReportParagraph {
   text: string;
   evidence: ReportEvidence;
   anchorIds: string[];
+  layer: ReportLayer;
+  claimKind?: DefenseClaimKind;
+  claimCategory?: DefenseCategory;
 }
+
+export type ReportLayer = "type" | "expression" | "gap" | "defense_utilization" | "personalization";
+export type DefenseClaimKind = "primary_defense" | "observed_reaction" | "defense_tie" | "scenario_limited";
 
 export interface ReportSection {
   id: ReportSectionId;
@@ -446,7 +453,8 @@ export type PaidReportQualityCode =
   | "excessive_free_overlap"
   | "missing_action"
   | "missing_action_evidence"
-  | "scenario_scope_mismatch";
+  | "scenario_scope_mismatch"
+  | "internal_value_leak";
 
 export interface PaidReportQualityIssue {
   code: PaidReportQualityCode;
@@ -464,6 +472,12 @@ export interface PaidReport extends ReportBase {
   answerReferences: AnswerReference[];
   actionProposals: ActionProposal[];
   qualityGate: PaidReportQualityResult;
+  defenseContext: {
+    primary?: DefenseCategory;
+    primaryTied: DefenseCategory[];
+    confidence: Confidence;
+    opportunityLimited: DefenseCategory[];
+  };
 }
 
 export interface ReportInput {

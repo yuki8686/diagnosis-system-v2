@@ -31,7 +31,7 @@ function answer(questionId: string, optionId?: string, numericValue?: number): A
 
 const defenseCategories: DefenseCategory[] = ["counterattack", "prove", "distance", "self-efface", "analyze", "self-blame", "numb", "freeze"];
 const zeroDefense = () => Object.fromEntries(defenseCategories.map((id) => [id, 0])) as Record<DefenseCategory, number>;
-const opportunities = (): Record<DefenseCategory, number> => ({ counterattack: 5, prove: 5, distance: 5, "self-efface": 5, analyze: 3, "self-blame": 2, numb: 2, freeze: 1 });
+const opportunities = (): Record<DefenseCategory, number> => ({ counterattack: 2, prove: 5, distance: 5, "self-efface": 5, analyze: 5, "self-blame": 3, numb: 2, freeze: 1 });
 
 export type ReportFixtureOptions = {
   type?: TypeId;
@@ -59,15 +59,20 @@ export function makeReportInput(options: ReportFixtureOptions = {}): ReportInput
     utilization: options.confidences?.utilization ?? "high",
   } as const;
 
+  const expressionQuestionId = reportRoute === "low-confidence" ? "GE01" : ({ win: "DS1", connect: "TS1", analyze: "RS1", axis: "JS1" } as const)[primary];
+  const gapPrefix = reportRoute === "low-confidence" ? "GZ1" : ({ win: "Z1", connect: "TZ1", analyze: "RZ1", axis: "JZ1" } as const)[primary];
+  const utilizationQuestionId = ({ win: "U-A1", connect: "T-U-A1", analyze: "R-U-A1", axis: "J-U-A1" } as const)[primary];
+
   const typeAnswer = answer("C01", questionById.get("C01")!.options.find((item) => item.typeId === primary)!.id);
-  const gapAnswers = [answer("Z1-H", "2", 2), answer("Z1-P", "5", 5)];
+  const expressionAnswer = answer(expressionQuestionId, "4", 4);
+  const gapAnswers = [answer(`${gapPrefix}-H`, "2", 2), answer(`${gapPrefix}-P`, "5", 5)];
   const defenseQuestionId = options.defenseMode === "opportunity-limited" ? "D3" : "D1";
   const defenseQuestion = questionById.get(defenseQuestionId)!;
   const defenseOption = defenseQuestion.options.find((item) => item.defenseCategory === (options.defenseMode === "opportunity-limited" ? "freeze" : "analyze"))!;
   const defenseAnswer = answer(defenseQuestionId, defenseOption.id);
-  const utilizationAnswer = answer("U-A1", "4", 4);
+  const utilizationAnswer = answer(utilizationQuestionId, "4", 4);
   const confirmationAnswers = options.confirmation ? [answer("DS-M1", "4", 4), answer("DS-M2", "5", 5)] : [];
-  const answers = [typeAnswer, ...gapAnswers, defenseAnswer, utilizationAnswer, ...confirmationAnswers];
+  const answers = [typeAnswer, expressionAnswer, ...gapAnswers, defenseAnswer, utilizationAnswer, ...confirmationAnswers];
   const questions = answers.map((item) => questionById.get(item.questionId)!);
 
   const counts = zeroDefense();
@@ -90,7 +95,7 @@ export function makeReportInput(options: ReportFixtureOptions = {}): ReportInput
     metadata: { engineVersion: ENGINE_VERSION, scoringVersion: SCORING_VERSION, questionBankVersion: QUESTION_BANK_VERSION, reportTemplateVersion: REPORT_TEMPLATE_VERSION },
     resolution,
     baseTypeScores: { win: primary === "win" ? 7 : 1, connect: primary === "connect" ? 7 : 2, analyze: primary === "analyze" ? 7 : 1, axis: primary === "axis" ? 7 : 1 },
-    expression: { pattern: expression, rawScore: 13, confidence: confidence.expression, requiresConfirmation: Boolean(options.confirmation), confirmationStatus: options.confirmation ? "resolved" : "not_needed", usedQuestionIds: confirmationAnswers.map((item) => item.questionId), isGeneric: reportRoute === "low-confidence" },
+    expression: { pattern: expression, rawScore: 13, confidence: confidence.expression, requiresConfirmation: Boolean(options.confirmation), confirmationStatus: options.confirmation ? "resolved" : "not_needed", usedQuestionIds: [expressionQuestionId, ...confirmationAnswers.map((item) => item.questionId)], isGeneric: reportRoute === "low-confidence" },
     gap: {
       pattern: gapPattern,
       direction: gapDirection,
@@ -98,11 +103,11 @@ export function makeReportInput(options: ReportFixtureOptions = {}): ReportInput
       directionConsistency: gapPattern === "reversal" || gapPattern === "unclear" ? 0.5 : 1,
       breadth: gapPattern === "small" ? 0 : 4,
       strength: gapStrength,
-      pairs: [{ pairId: "Z1", inner: 2, public: 2 + gapDiff, diff: gapDiff, innerQuestionId: "Z1-H", publicQuestionId: "Z1-P" }],
-      maxGapPair: { pairId: "Z1", inner: 2, public: 2 + gapDiff, diff: gapDiff, innerQuestionId: "Z1-H", publicQuestionId: "Z1-P" },
+      pairs: [{ pairId: gapPrefix, inner: 2, public: 2 + gapDiff, diff: gapDiff, innerQuestionId: `${gapPrefix}-H`, publicQuestionId: `${gapPrefix}-P` }],
+      maxGapPair: { pairId: gapPrefix, inner: 2, public: 2 + gapDiff, diff: gapDiff, innerQuestionId: `${gapPrefix}-H`, publicQuestionId: `${gapPrefix}-P` },
       confidence: confidence.gap,
       confirmationStatus: "not_needed",
-      usedQuestionIds: ["Z1-H", "Z1-P"],
+      usedQuestionIds: [`${gapPrefix}-H`, `${gapPrefix}-P`],
     },
     defense: {
       counts,
@@ -113,7 +118,7 @@ export function makeReportInput(options: ReportFixtureOptions = {}): ReportInput
       confidence: confidence.defense,
       opportunities: opportunities(),
       selectionRates: zeroDefense(),
-      opportunityLimited: ["analyze", "self-blame", "numb", "freeze"],
+      opportunityLimited: ["counterattack", "self-blame", "numb", "freeze"],
       observedReactions: [{ questionId: defenseQuestionId, category: defenseOption.defenseCategory! }],
       usedQuestionIds: [defenseQuestionId],
     },
@@ -127,7 +132,7 @@ export function makeReportInput(options: ReportFixtureOptions = {}): ReportInput
       requiresConfirmation: false,
       contradictionMetrics: [],
       confirmationStatus: "not_needed",
-      usedQuestionIds: ["U-A1"],
+      usedQuestionIds: [utilizationQuestionId],
     },
     typeFit: { incompatible: false, signals: { fitItemLow: false, baseMarginSmall: false, secondFitSignalLow: false } },
     reliability: { fastResponse: false, positionStreak: false, semanticMonotony: false, likertSameValueStreak: false, reverseContradiction: false, similarQuestionMismatch: false, issues: options.reliabilityIssues ?? [] },

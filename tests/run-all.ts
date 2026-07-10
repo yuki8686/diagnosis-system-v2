@@ -12,3 +12,5 @@ import "./result-integration.test";
 import "./report-generation.test";
 import "./report-quality.test";
 import "./report-integration.test";
+import "./report-content.test";
+import "./report-engine-e2e.test";

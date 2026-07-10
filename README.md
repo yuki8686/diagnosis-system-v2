@@ -58,13 +58,15 @@ const freeReport = generateFreeReport(input);
 const paidReport = generatePaidReport(input, freeReport);
 ```
 
-- 無料版: ラベル、出し方、回答との短い接続、価値の高い通知を表示し、個別アンカーは最大2件です。
-- resolved有料版: 13セクションで、最大ズレ、防衛、今回確認された反応、使いこなし、領域別の可能性、行動提案を分離します。
+- 無料版: 4タイプ×3出し方の12個の固有テンプレートから、一言コピー、コア欲望、守るもの、印象、本人回答を使った一撃、価値の高い通知を合成します。個別アンカーは最大2件です。
+- resolved有料版: 13セクションで、タイプ、出し方、ズレ、防衛・使いこなし、個別アンカーの5層を合成します。最大ズレ、防衛、今回確認された反応、使いこなし、領域別の可能性、行動提案は別々に扱います。
 - low-confidence有料版: 8セクションで上位2タイプを併記し、単独タイプへ確定せず、切り替わる条件を観察対象にします。
-- 有料版は異なる回答参照3件以上を保持し、最大ズレペアと確認回答を優先候補にします。
+- 有料版は異なる回答参照3件以上を本文へ実際に差し込み、タイプまたは比較回答、最大ズレペア、防衛・使いこなし・確認回答を追跡可能にします。
 - 品質ゲート失敗時は`PaidReportQualityError`を送出し、成功した有料レポートとして返しません。
 
 根拠レベルは`direct`、`derived`、`inferred`、`possibility`の4段階です。文章強度はブロック別confidenceにより`direct`、`moderate`、`soft`へ変換します。仕事・関係など未測定領域は`possibility`に限定します。
+
+内部enum、生のconfidence名、確認状態、英語のズレ分類、生の小数スコアは本文へ出さず、日本語表示へ変換します。防衛段落は`primary_defense`、`observed_reaction`、`defense_tie`、`scenario_limited`の構造claimを持ち、品質ゲートが`DefenseResult`との一致を確認します。
 
 レポートには`questionBankVersion`、`scoringVersion`、`engineVersion`、`reportTemplateVersion`を保存します。回答と質問定義のversion不一致、回答重複、結果とrouteの不一致は生成前に拒否します。
 
@@ -87,3 +89,4 @@ const paidReport = generatePaidReport(input, freeReport);
 - 防衛同率・防衛low・機会数制限・確認回答のレポート反映
 - 禁止表現、有料必須構造、行動提案、無料／有料重複率0.35境界
 - 回答パターンA・B・Cからのレポート統合
+- 実エンジンの回答→ルーティング→最終結果→無料／有料レポート→品質ゲートE2E

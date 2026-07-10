@@ -1,4 +1,6 @@
 import type { AnswerRecord, AnswerReference, PersonalizationAnchor, QuestionDefinition, ReportInput } from "../types";
+import { DEFENSE_LABELS } from "../constants";
+import { GAP_DIRECTION_TEXT, gapStrengthText, utilizationGapText } from "./templates/presentation";
 
 export function buildAnswerReferences(answers: AnswerRecord[], questions: QuestionDefinition[]): AnswerReference[] {
   const questionMap = new Map(questions.map((question) => [question.id, question]));
@@ -31,22 +33,23 @@ export function buildAnchors(input: ReportInput): PersonalizationAnchor[] {
     id: `gap-${result.gap.maxGapPair.pairId}`,
     kind: "gap_pair",
     sourceQuestionIds: [result.gap.maxGapPair.innerQuestionId, result.gap.maxGapPair.publicQuestionId],
-    summary: `${result.gap.maxGapPair.pairId}で本音側と対人側に${result.gap.maxGapPair.diff}点の差`,
+    summary: `本音側と対人側で${GAP_DIRECTION_TEXT[result.gap.direction]}に${gapStrengthText(result.gap.strength)}が見られた場面`,
     confidence: result.confidence.gap,
   });
   for (const reaction of result.defense.observedReactions) anchors.push({
     id: `reaction-${reaction.questionId}`,
     kind: "observed_reaction",
     sourceQuestionIds: [reaction.questionId],
-    summary: `今回の場面回答で${reaction.category}を選択`,
+    summary: `今回の場面回答で「${DEFENSE_LABELS[reaction.category]}」反応を選択`,
     confidence: result.confidence.defense,
     opportunityLimited: result.defense.opportunityLimited.includes(reaction.category),
+    defenseCategory: reaction.category,
   });
   if (result.utilization.usedQuestionIds.length) anchors.push({
     id: "utilization-gap",
     kind: "utilization",
     sourceQuestionIds: result.utilization.usedQuestionIds,
-    summary: `気づき${result.utilization.awareness.toFixed(1)}、活用${result.utilization.utilization.toFixed(1)}`,
+    summary: utilizationGapText(result.utilization.gap),
     confidence: result.confidence.utilization,
   });
   const typeQuestionIds = input.questions.filter((question) => question.block === "common-type" || question.block === "type-comparison").map((question) => question.id).filter((id) => input.answers.some((answer) => answer.questionId === id));

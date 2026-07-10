@@ -63,11 +63,13 @@ lowOverclaim.label = "勝ち筋タイプ";
 assert.ok(!validatePaidReport(lowOverclaim).passed && validatePaidReport(lowOverclaim).issues.some((issue) => issue.code === "low_confidence_overclaim"));
 
 const defenseOverclaim = structuredClone(generatePaidReport(makeReportInput({ defenseMode: "low", confidences: { defense: "low" } }))) as PaidReport;
-defenseOverclaim.sections.find((section) => section.id === "defense")!.paragraphs[0].text = "第一防衛として分析する反応が確認されました。";
+defenseOverclaim.sections.find((section) => section.id === "defense")!.paragraphs[0].claimKind = "primary_defense";
+defenseOverclaim.sections.find((section) => section.id === "defense")!.paragraphs[0].claimCategory = "analyze";
 assert.ok(!validatePaidReport(defenseOverclaim).passed && validatePaidReport(defenseOverclaim).issues.some((issue) => issue.code === "defense_overclaim"));
 
 const limitedOverclaim = structuredClone(generatePaidReport(makeReportInput({ defenseMode: "opportunity-limited", confidences: { defense: "low" } }))) as PaidReport;
-limitedOverclaim.sections.find((section) => section.id === "defense")!.paragraphs[0].text = "安定した反応として固まる傾向があります。";
+limitedOverclaim.sections.find((section) => section.id === "defense")!.paragraphs[0].claimKind = "primary_defense";
+limitedOverclaim.sections.find((section) => section.id === "defense")!.paragraphs[0].claimCategory = "freeze";
 assert.ok(!validatePaidReport(limitedOverclaim).passed && validatePaidReport(limitedOverclaim).issues.some((issue) => issue.code === "opportunity_limited_overclaim"));
 
 const overlapping = structuredClone(paid) as PaidReport;

@@ -20,8 +20,18 @@ export function validatePaidReport(report: PaidReport, freeReport?: FreeReport):
     if (paragraph.evidence && paragraph.evidence.wordingStrength !== (downgraded ? "soft" : expectedWording(paragraph.evidence.confidence))) add("wording_mismatch", "confidence and wordingStrength are inconsistent", section.id, paragraph.id);
     if ((paragraph.evidence?.scenarioScope === "work_possibility" || paragraph.evidence?.scenarioScope === "relationship_possibility") && paragraph.evidence.evidenceLevel !== "possibility") add("scenario_scope_mismatch", "Unmeasured domains must use possibility evidence", section.id, paragraph.id);
     for (const finding of detectProhibitedExpressions(paragraph.text)) add("prohibited_expression", `${finding.category}: ${finding.matchedText}`, section.id, paragraph.id);
+    if (section.id === "defense" && !paragraph.claimKind) add("defense_overclaim", "Defense paragraphs require a structured claimKind", section.id, paragraph.id);
+    if (paragraph.claimKind === "primary_defense") {
+      if (!report.defenseContext.primary || report.defenseContext.confidence === "low" || paragraph.claimCategory !== report.defenseContext.primary) add("defense_overclaim", "Primary-defense claim does not match DefenseResult", section.id, paragraph.id);
+      if (paragraph.claimCategory && report.defenseContext.opportunityLimited.includes(paragraph.claimCategory)) add("opportunity_limited_overclaim", "Opportunity-limited category cannot be a stable primary-defense claim", section.id, paragraph.id);
+    }
+    if (paragraph.claimKind === "defense_tie" && report.defenseContext.primaryTied.length < 2) add("defense_overclaim", "Defense-tie claim does not match DefenseResult", section.id, paragraph.id);
   }
-  const usedSourceIds = new Set(report.sections.flatMap((section) => section.paragraphs.flatMap((paragraph) => paragraph.evidence.sourceQuestionIds)));
+  const visibleText = [report.label, report.subtitle, ...report.sections.flatMap((section) => [section.title, ...section.paragraphs.map((paragraph) => paragraph.text)])].join("\n");
+  for (const finding of detectProhibitedExpressions(visibleText)) if (!issues.some((issue) => issue.code === "prohibited_expression" && issue.message.includes(finding.matchedText))) add("prohibited_expression", `${finding.category}: ${finding.matchedText}`);
+  const internalTokens = ["strong", "medium", "light", "not_needed", "pending", "resolved", "unresolved", "skipped", "low_confidence", "suppression", "amplification", "reversal", "unclear", "growth"];
+  if (internalTokens.some((token) => new RegExp(`(^|[^A-Za-z])${token}([^A-Za-z]|$)`).test(visibleText)) || /\b[a-z]+_[a-z_]+\b/.test(visibleText) || /\b\d+\.\d+\b/.test(visibleText)) add("internal_value_leak", "User-facing text contains an internal enum, snake_case value, or raw decimal score");
+  const usedSourceIds = new Set(report.sections.flatMap((section) => section.paragraphs.filter((paragraph) => paragraph.evidence.evidenceLevel === "direct").flatMap((paragraph) => paragraph.evidence.sourceQuestionIds)));
   const usedReferences = report.answerReferences.filter((reference) => usedSourceIds.has(reference.questionId));
   const distinctReferences = new Set(usedReferences.map((reference) => reference.questionId));
   if (distinctReferences.size < 3) add("insufficient_answer_references", "Paid report requires at least three distinct answer references");
@@ -29,10 +39,6 @@ export function validatePaidReport(report: PaidReport, freeReport?: FreeReport):
   if (!usedReferences.some((reference) => reference.metric === "gap" || reference.metric === "defense" || reference.metric === "awareness" || reference.metric === "utilization")) add("insufficient_answer_references", "A gap, defense, or utilization answer reference is required");
   const gapAnchor = report.anchors.find((anchor) => anchor.kind === "gap_pair");
   if (gapAnchor && !report.sections.find((section) => section.id === "gap")?.paragraphs.some((paragraph) => gapAnchor.sourceQuestionIds.every((id) => paragraph.evidence.sourceQuestionIds.includes(id)))) add("missing_max_gap", "Maximum gap pair is not reflected in the gap section", "gap");
-  const defenseAnchors = report.anchors.filter((anchor) => anchor.kind === "defense" || anchor.kind === "observed_reaction");
-  const defenseText = report.sections.find((section) => section.id === "defense")?.paragraphs.map((paragraph) => paragraph.text).join(" ") ?? "";
-  if (defenseAnchors.some((anchor) => anchor.confidence === "low") && /第一防衛として/.test(defenseText)) add("defense_overclaim", "Low-confidence defense must not be stated as a sole primary defense", "defense");
-  if (defenseAnchors.some((anchor) => anchor.opportunityLimited) && /安定した反応|一貫した反応|第一防衛として/.test(defenseText)) add("opportunity_limited_overclaim", "Opportunity-limited reactions must remain scene-limited", "defense");
   if (report.route === "low_confidence" && !report.label.includes("×")) add("low_confidence_overclaim", "Low-confidence report must show multiple candidates");
   if (!report.actionProposals.length || !sectionIds.has("action")) add("missing_action", "At least one action proposal is required", "action");
   for (const action of report.actionProposals) if (!action.sourceQuestionIds.length) add("missing_action_evidence", "Action proposal requires sourceQuestionIds", "action");

@@ -26,24 +26,24 @@ assert.equal(confirmedPaid.sections.find((section) => section.id === "expression
 
 const tied = makeReportInput({ defenseMode: "tie", confidences: { defense: "low" } });
 const tiedPaid = generatePaidReport(tied, generateFreeReport(tied));
-assert.match(tiedPaid.sections.find((section) => section.id === "defense")!.paragraphs[0].text, /同率/);
+assert.match(tiedPaid.sections.find((section) => section.id === "defense")!.paragraphs[0].text, /同じ程度/);
 assert.doesNotMatch(tiedPaid.sections.find((section) => section.id === "defense")!.paragraphs[0].text, /単独で多く/);
 
 const defenseLow = makeReportInput({ defenseMode: "low", confidences: { defense: "low" } });
 const defenseLowPaid = generatePaidReport(defenseLow, generateFreeReport(defenseLow));
-assert.match(defenseLowPaid.sections.find((section) => section.id === "defense")!.paragraphs[0].text, /特定場面/);
+assert.match(defenseLowPaid.sections.find((section) => section.id === "defense")!.paragraphs.map((paragraph) => paragraph.text).join(" "), /場面/);
 assert.doesNotMatch(defenseLowPaid.sections.find((section) => section.id === "defense")!.paragraphs[0].text, /第一防衛として/);
 
 const limited = makeReportInput({ defenseMode: "opportunity-limited", confidences: { defense: "low" } });
 const limitedPaid = generatePaidReport(limited, generateFreeReport(limited));
-assert.match(limitedPaid.sections.find((section) => section.id === "defense")!.paragraphs[0].text, /特定場面|場面限定/);
+assert.match(limitedPaid.sections.find((section) => section.id === "defense")!.paragraphs.map((paragraph) => paragraph.text).join(" "), /場面に限った|場面限定/);
 
 const smallGap = makeReportInput({ gapPattern: "small" });
 const smallPaid = generatePaidReport(smallGap, generateFreeReport(smallGap));
-assert.match(smallPaid.sections.find((section) => section.id === "gap")!.paragraphs[0].text, /ズレ小/);
+assert.match(smallPaid.sections.find((section) => section.id === "gap")!.paragraphs[0].text, /比較的近い/);
 
 const utilizationGap = makeReportInput({ utilizationGap: 2 });
 const utilizationPaid = generatePaidReport(utilizationGap, generateFreeReport(utilizationGap));
-assert.match(utilizationPaid.sections.find((section) => section.id === "utilization")!.paragraphs[0].text, /段差は2\.0/);
+assert.match(utilizationPaid.sections.find((section) => section.id === "utilization")!.paragraphs.map((paragraph) => paragraph.text).join(" "), /大きめの間/);
 
 console.log("report A/B/C, confirmation, tie, and fallback integration tests passed");
