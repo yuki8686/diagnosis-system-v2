@@ -43,6 +43,7 @@ export interface QuestionDefinition {
   pairId?: string;
   polarity?: "positive" | "negative" | "fit" | "reverse" | "switch";
   metric?: "type" | "expression" | "gap" | "defense" | "awareness" | "utilization" | "fit";
+  fitSignalRole?: "primary" | "secondary" | "block";
   isConfirmation?: boolean;
   isGeneric?: boolean;
   evidenceLevel: "direct";
@@ -71,6 +72,23 @@ export interface ComparisonScores {
   winner?: TypeId;
 }
 
+export interface ComparisonRawAnswer {
+  questionId: string;
+  selectedType: TypeId;
+}
+
+interface ComparisonResolutionBase {
+  pair: [TypeId, TypeId];
+  counts: TypeScores;
+  rawAnswers: ComparisonRawAnswer[];
+  nextQuestionIds: string[];
+}
+
+export type ComparisonResolution =
+  | (ComparisonResolutionBase & { status: "resolved"; winner: TypeId })
+  | (ComparisonResolutionBase & { status: "needs_more" })
+  | (ComparisonResolutionBase & { status: "low_confidence" });
+
 export type TypeResolution =
   | { kind: "resolved"; primary: TypeId; secondary?: TypeId; source: "base" | "comparison" }
   | { kind: "low-confidence"; candidates: [TypeId, TypeId] | [TypeId, TypeId, TypeId] };
@@ -80,12 +98,16 @@ export interface ExpressionResult {
   rawScore: number;
   switchScore?: number;
   confidence: Confidence;
+  requiresConfirmation: boolean;
+  confirmationStatus: ConfirmationStatus;
   usedQuestionIds: string[];
   isGeneric: boolean;
 }
 
 export type GapPattern = "small" | "suppression" | "amplification" | "reversal" | "unclear";
 export type GapStrength = "light" | "medium" | "strong" | null;
+export type GapDirection = "none" | "negative" | "positive" | "mixed" | "unclear";
+export type ConfirmationStatus = "not_needed" | "pending" | "resolved" | "unresolved" | "skipped";
 
 export interface GapPairResult {
   pairId: string;
@@ -98,6 +120,7 @@ export interface GapPairResult {
 
 export interface GapResult {
   pattern: GapPattern;
+  direction: GapDirection;
   magnitude: number;
   directionConsistency: number | null;
   breadth: number;
@@ -105,6 +128,7 @@ export interface GapResult {
   pairs: GapPairResult[];
   maxGapPair?: GapPairResult;
   confidence: Confidence;
+  confirmationStatus: ConfirmationStatus;
   usedQuestionIds: string[];
 }
 
@@ -125,7 +149,13 @@ export interface DefenseResult {
   primary?: DefenseCategory;
   secondary?: DefenseCategory;
   tied: DefenseCategory[];
+  primaryTied: DefenseCategory[];
+  secondaryTied: DefenseCategory[];
   confidence: Confidence;
+  opportunities: Record<DefenseCategory, number>;
+  selectionRates: Record<DefenseCategory, number>;
+  opportunityLimited: DefenseCategory[];
+  observedReactions: Array<{ questionId: string; category: DefenseCategory }>;
   usedQuestionIds: string[];
 }
 
@@ -136,22 +166,32 @@ export interface UtilizationResult {
   utilizationBand: "high" | "middle" | "growth";
   gap: number;
   confidence: Confidence;
+  requiresConfirmation: boolean;
+  contradictionMetrics: Array<"awareness" | "utilization">;
+  confirmationStatus: ConfirmationStatus;
   usedQuestionIds: string[];
 }
 
 export interface ReliabilityFlags {
   fastResponse: boolean;
-  positionRun: boolean;
+  positionStreak: boolean;
   semanticMonotony: boolean;
-  likertStraightLine: boolean;
+  likertSameValueStreak: boolean;
   reverseContradiction: boolean;
   similarQuestionMismatch: boolean;
+}
+
+export interface ReliabilityAssessment {
+  mainSignalCount: number;
+  overallWeakening: boolean;
+  blockContradictions: Array<"reverseContradiction" | "similarQuestionMismatch">;
 }
 
 export interface TypeFitSignals {
   fitItemLow: boolean;
   baseMarginSmall: boolean;
   secondFitSignalLow: boolean;
+  blockInconsistency?: boolean;
   feedbackMismatch?: boolean;
 }
 
@@ -166,6 +206,25 @@ export interface BlockConfidences {
   gap: Confidence;
   defense: Confidence;
   utilization: Confidence;
+}
+
+export type ConfirmationKind = "expression" | "utilization" | "gap";
+export type DiagnosisStep = "common-type" | "comparison" | "expression" | "defense" | "gap" | "utilization" | "confirmation" | "complete";
+
+export interface DiagnosisRoute {
+  route: "pending-comparison" | "resolved" | "low-confidence";
+  currentStep: DiagnosisStep;
+  questionIds: string[];
+  answeredQuestionIds: string[];
+  nextQuestionId?: string;
+  provisionalType: TypeId;
+  comparison?: ComparisonResolution;
+  activatedConfirmations: ConfirmationKind[];
+  skippedConfirmations: ConfirmationKind[];
+  confirmationConfidenceHints: Partial<Record<ConfirmationKind, "low">>;
+  remainingAdditionalBudget: number;
+  sessionSeed: string;
+  limits: { operationalMaximum: 47; hardMaximum: 48 };
 }
 
 export interface DiagnosisResult {

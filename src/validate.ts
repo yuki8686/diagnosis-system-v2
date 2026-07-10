@@ -39,6 +39,19 @@ export function validateQuestionBank(bank: QuestionBankSections): ValidationIssu
     if (actual !== expected) issues.push({ severity: "error", code: "COUNT_MISMATCH", message: `${name}: expected ${expected}, got ${actual}` });
   }
 
+  for (const [pairKey, questions] of Object.entries(bank.comparisons)) {
+    if (questions.length !== 4) issues.push({ severity: "error", code: "COMPARISON_PAIR_COUNT", message: `${pairKey}: expected 4 comparison items, got ${questions.length}` });
+    const ids = questions.map((question) => question.id);
+    if (!ids.every((id, index) => id.endsWith(`-${index + 1}`))) issues.push({ severity: "error", code: "COMPARISON_PAIR_SEQUENCE", message: `${pairKey}: comparison ids must end in -1 through -4` });
+    const expectedTypes = questions[0]?.options.map((option) => option.typeId).filter((value): value is NonNullable<typeof value> => Boolean(value)).sort().join("|");
+    const pairKeyTypes = pairKey.split("-").sort().join("|");
+    if (expectedTypes !== pairKeyTypes) issues.push({ severity: "error", code: "COMPARISON_PAIR_KEY_TYPES", message: `${pairKey}: option types must match the pair key` });
+    if (questions.some((question) => question.options.map((option) => option.typeId).filter((value): value is NonNullable<typeof value> => Boolean(value)).sort().join("|") !== expectedTypes)) {
+      issues.push({ severity: "error", code: "COMPARISON_PAIR_TYPES", message: `${pairKey}: all four questions must compare the same two types` });
+    }
+    if (new Set(questions.map((question) => question.prompt)).size !== questions.length) issues.push({ severity: "error", code: "DUPLICATE_COMPARISON_PROMPT", message: `${pairKey}: comparison prompts must be distinct` });
+  }
+
   for (const typeId of TYPE_IDS) {
     const section = bank.byType[typeId];
     const checks: Array<[string, number, number]> = [

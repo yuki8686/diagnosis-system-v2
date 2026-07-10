@@ -1,8 +1,8 @@
 import type { DefenseCategory, TypeId } from "./types";
 
-export const ENGINE_VERSION = "1.0.0";
-export const SCORING_VERSION = "1.0.0";
-export const QUESTION_BANK_VERSION = "1.0.1";
+export const ENGINE_VERSION = "1.1.0";
+export const SCORING_VERSION = "1.1.0";
+export const QUESTION_BANK_VERSION = "1.1.0";
 
 export const TYPE_LABELS: Record<TypeId, string> = {
   win: "勝ち筋タイプ",

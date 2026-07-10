@@ -24,26 +24,38 @@ export const comparisonQuestions: Record<string, QuestionDefinition[]> = {
   "connect-win": [
     choice({ id: "VS-WC-1", block: "type-comparison", prompt: `勝てるけれど場の空気が固くなるか、負けを受け入れて輪を守るか、どちらかしか選べないなら?`, metric: "type", options: [{ id: "A", label: `勝ちに行く`, typeId: "win" }, { id: "B", label: `輪を守る`, typeId: "connect" }] }),
     choice({ id: "VS-WC-2", block: "type-comparison", prompt: `評価がはっきり付く一人仕事と、評価は目立たないが好きな仲間との仕事、どちらかだけ選ぶなら?`, metric: "type", options: [{ id: "A", label: `評価が付く一人仕事`, typeId: "win" }, { id: "B", label: `仲間との仕事`, typeId: "connect" }] }),
+    choice({ id: "VS-WC-3", block: "type-comparison", prompt: `親しい相手との二人の計画で、成果を大きくできる進め方に変えるには、相手が楽しみにしていた役割を減らす必要がある。どちらを選ぶ?`, metric: "type", options: [{ id: "A", label: `成果が大きくなる進め方へ変え、自分が主導する`, typeId: "win" }, { id: "B", label: `成果が小さくなっても、相手が楽しみにしていた役割を残す`, typeId: "connect" }] }),
+    choice({ id: "VS-WC-4", block: "type-comparison", prompt: `仲間と続けてきた活動で、自分に別の役割へ移る選択肢が生まれた。移れば新しい経験を得られるが、今の仲間と一緒に過ごす時間は大きく減る。どちらを選ぶ?`, metric: "type", options: [{ id: "A", label: `今の仲間との時間が減っても、新しい役割へ移る`, typeId: "win" }, { id: "B", label: `新しい役割へは移らず、今の仲間との活動を続ける`, typeId: "connect" }] }),
   ],
   "analyze-win": [
     choice({ id: "VS-WR-1", block: "type-comparison", prompt: `主導して全体を動かす役と、誰にも口を出されず自分の持ち場を極める役、どちらかなら?`, metric: "type", options: [{ id: "A", label: `主導する役`, typeId: "win" }, { id: "B", label: `持ち場を極める役`, typeId: "analyze" }] }),
     choice({ id: "VS-WR-2", block: "type-comparison", prompt: `締切間際。多少粗くても先に形にして流れを取るか、納得いくまで確かめてから出すか?`, metric: "type", options: [{ id: "A", label: `先に形にする`, typeId: "win" }, { id: "B", label: `確かめてから出す`, typeId: "analyze" }] }),
+    choice({ id: "VS-WR-3", block: "type-comparison", prompt: `有望だが情報の少ない機会がある。今決めれば先に動けるが、調べてからでは他の人に先を越されるかもしれない。どちらを選ぶ?`, metric: "type", options: [{ id: "A", label: `情報が十分でなくても、先に決めて動く`, typeId: "win" }, { id: "B", label: `先を越される可能性を受け入れ、判断材料を増やしてから決める`, typeId: "analyze" }] }),
+    choice({ id: "VS-WR-4", block: "type-comparison", prompt: `人前で判断を誤り、次の機会がすぐ来た。原因を十分に整理する時間はない。どちらを選ぶ?`, metric: "type", options: [{ id: "A", label: `不完全でもすぐ次の機会へ入り、結果を取り返しにいく`, typeId: "win" }, { id: "B", label: `次の機会を見送り、判断を誤った原因を整理する`, typeId: "analyze" }] }),
   ],
   "axis-win": [
     choice({ id: "VS-WJ-1", block: "type-comparison", prompt: `勝ち筋はあるが自分の流儀に反するやり方と、流儀は守れるが負けが濃厚な道、どちらかなら?`, metric: "type", options: [{ id: "A", label: `勝ち筋を取る`, typeId: "win" }, { id: "B", label: `流儀を守る`, typeId: "axis" }] }),
     choice({ id: "VS-WJ-2", block: "type-comparison", prompt: `周囲から高く評価される仕事と、自分が意味を感じる仕事、どちらか一方しか取れないなら?`, metric: "type", options: [{ id: "A", label: `評価される仕事`, typeId: "win" }, { id: "B", label: `意味を感じる仕事`, typeId: "axis" }] }),
+    choice({ id: "VS-WJ-3", block: "type-comparison", prompt: `より大きな決定権を持てる役割を提示された。ただし、その役割では自分の考えと完全には一致しない方針も、立場として支える必要がある。どちらを選ぶ?`, metric: "type", options: [{ id: "A", label: `考えと完全には一致しなくても、決定権を持てる役割を引き受ける`, typeId: "win" }, { id: "B", label: `決定権を持てなくても、自分の考えに近い立場を選ぶ`, typeId: "axis" }] }),
+    choice({ id: "VS-WJ-4", block: "type-comparison", prompt: `長く続けて成果も出ている計画が、途中から当初の目的とずれてきた。立て直すには、これまでの優位や積み上げを手放す必要がある。どちらを選ぶ?`, metric: "type", options: [{ id: "A", label: `目的とのずれが残っても、今ある優位と成果を活かして続ける`, typeId: "win" }, { id: "B", label: `今ある優位や成果を手放してでも、目的に沿う形へ組み直す`, typeId: "axis" }] }),
   ],
   "analyze-connect": [
     choice({ id: "VS-CR-1", block: "type-comparison", prompt: `みんなと一緒に進められるが途中で予定変更が多い活動と、一人で落ち着いて進められる活動なら?`, metric: "type", options: [{ id: "A", label: `人と一緒に進める`, typeId: "connect" }, { id: "B", label: `一人で落ち着いて進める`, typeId: "analyze" }] }),
     choice({ id: "VS-CR-2", block: "type-comparison", prompt: `相手の気持ちにまず寄り添うことと、状況を正確に整理することの片方しかできないなら?`, metric: "type", options: [{ id: "A", label: `まず気持ちへ寄り添う`, typeId: "connect" }, { id: "B", label: `まず状況を整理する`, typeId: "analyze" }] }),
+    choice({ id: "VS-CR-3", block: "type-comparison", prompt: `大切な相手との間に気になる変化があるが、まだ理由も事実も整理できていない。どちらを選ぶ?`, metric: "type", options: [{ id: "A", label: `整理できていなくても、気になっていることを先に相手へ伝える`, typeId: "connect" }, { id: "B", label: `一時的に距離ができても、理由と事実を整理してから相手へ伝える`, typeId: "analyze" }] }),
+    choice({ id: "VS-CR-4", block: "type-comparison", prompt: `仲間から、今後も定期的に集まりの調整役を続けてほしいと言われた。続けると関わりは保てるが、自分の集中時間が細かく途切れる。どちらを選ぶ?`, metric: "type", options: [{ id: "A", label: `集中時間が途切れても、調整役を続けて仲間との関わりを保つ`, typeId: "connect" }, { id: "B", label: `関わりが減っても、調整役を断って集中時間を守る`, typeId: "analyze" }] }),
   ],
   "axis-connect": [
     choice({ id: "VS-CJ-1", block: "type-comparison", prompt: `周囲が喜ぶ形だが自分の理想とは少し違う案と、自分の理想には近いが周囲の賛同が少ない案なら?`, metric: "type", options: [{ id: "A", label: `周囲が喜ぶ形を選ぶ`, typeId: "connect" }, { id: "B", label: `自分の理想に近い形を選ぶ`, typeId: "axis" }] }),
     choice({ id: "VS-CJ-2", block: "type-comparison", prompt: `大勢と楽しく過ごせる浅い関係と、人数は少ないが価値観まで語れる関係なら?`, metric: "type", options: [{ id: "A", label: `大勢と楽しく過ごせる関係`, typeId: "connect" }, { id: "B", label: `少人数でも深く語れる関係`, typeId: "axis" }] }),
+    choice({ id: "VS-CJ-3", block: "type-comparison", prompt: `大切な相手と意見がぶつかり、関係が冷えている。自分の考えの核は変わっていない。どちらを選ぶ?`, metric: "type", options: [{ id: "A", label: `自分の言い方や進め方を先に調整し、関係を戻すきっかけを作る`, typeId: "connect" }, { id: "B", label: `関係が冷えたままでも、自分の考えの核を変えずに伝え続ける`, typeId: "axis" }] }),
+    choice({ id: "VS-CJ-4", block: "type-comparison", prompt: `長く続く集まりに、皆が親しんでいる習慣がある。自分は別のやり方の方が合うと感じているが、変えると共有してきた雰囲気も変わる。どちらを選ぶ?`, metric: "type", options: [{ id: "A", label: `自分には別のやり方が合っていても、皆が親しんでいる習慣を続ける`, typeId: "connect" }, { id: "B", label: `共有してきた雰囲気が変わる可能性があっても、別のやり方を提案する`, typeId: "axis" }] }),
   ],
   "analyze-axis": [
     choice({ id: "VS-RJ-1", block: "type-comparison", prompt: `根拠は十分だが自分の美学には合わない選択と、根拠はまだ弱いが自分の信念に沿う選択なら?`, metric: "type", options: [{ id: "A", label: `根拠が十分な選択`, typeId: "analyze" }, { id: "B", label: `信念に沿う選択`, typeId: "axis" }] }),
     choice({ id: "VS-RJ-2", block: "type-comparison", prompt: `興味のあることを自由に掘り下げる時間と、一つの理想を形にするための鍛錬時間なら?`, metric: "type", options: [{ id: "A", label: `自由に掘り下げる`, typeId: "analyze" }, { id: "B", label: `理想を形にする鍛錬`, typeId: "axis" }] }),
+    choice({ id: "VS-RJ-3", block: "type-comparison", prompt: `人前で今後の方向を示す必要がある。確かな情報だけでは方向を一つに絞れないが、自分が望む方向ははっきりしている。どちらを選ぶ?`, metric: "type", options: [{ id: "A", label: `確かな情報で言える範囲だけを示し、方向の決定は保留する`, typeId: "analyze" }, { id: "B", label: `情報が十分でなくても、自分が望む方向を明確に示す`, typeId: "axis" }] }),
+    choice({ id: "VS-RJ-4", block: "type-comparison", prompt: `進行中の計画に重大な問題がある可能性が出てきたが、原因はまだ特定できていない。どちらを選ぶ?`, metric: "type", options: [{ id: "A", label: `進行が止まっても、原因と構造が分かるまで調べる`, typeId: "analyze" }, { id: "B", label: `原因を完全に特定できなくても、望む状態へ近づく修正を先に試す`, typeId: "axis" }] }),
   ],
 };
 
@@ -61,7 +73,7 @@ export const genericExpressionQuestions: QuestionDefinition[] = [
   likert({ id: "GE01", block: "generic-expression", prompt: `自分が望んでいることを、周囲へ言葉で伝えることが多い`, metric: "expression", polarity: "positive", isGeneric: true }),
   likert({ id: "GE02", block: "generic-expression", prompt: `本当に欲しいものほど、表には出さず自分の中にしまっておく`, metric: "expression", polarity: "negative", isGeneric: true }),
   likert({ id: "GE03", block: "generic-expression", prompt: `納得していないことがあると、態度や行動に表れやすい`, metric: "expression", polarity: "positive", isGeneric: true }),
-  likert({ id: "GE04", block: "generic-expression", prompt: `相手や場面によって、自分の希望を見せるか隠すかを意識的に変えている`, metric: "expression", polarity: "switch", isConfirmation: true, isGeneric: true }),
+  likert({ id: "GE04", block: "generic-expression", prompt: `相手や場面によって、自分の希望を見せるか隠すかを意識的に変えている`, metric: "expression", polarity: "switch", isGeneric: true }),
 ];
 
 export const genericGapQuestions: QuestionDefinition[] = [
@@ -83,7 +95,7 @@ const winExpression: QuestionDefinition[] = [
   likert({ id: "DS1", block: "expression", prompt: `勝ちたい・優位に立ちたいという気持ちを、周囲に隠さず見せている`, targetType: "win", metric: "expression", polarity: "positive" }),
   likert({ id: "DS2", block: "expression", prompt: `競争心は表に出さず、結果でだけ示したい`, targetType: "win", metric: "expression", polarity: "negative" }),
   likert({ id: "DS3", block: "expression", prompt: `「負けたくない」と口に出して言うことがある`, targetType: "win", metric: "expression", polarity: "positive" }),
-  likert({ id: "DS-FIT", block: "expression", prompt: `周囲に見せるかどうかとは別に、自分の中では「負けたくない」「優位でいたい」という感覚が強い`, targetType: "win", metric: "fit", polarity: "fit" }),
+  likert({ id: "DS-FIT", block: "expression", prompt: `周囲に見せるかどうかとは別に、自分の中では「負けたくない」「優位でいたい」という感覚が強い`, targetType: "win", metric: "fit", polarity: "fit", fitSignalRole: "primary" }),
   likert({ id: "DS-M1", block: "expression", prompt: `相手や場面によって、競争心を見せるか隠すかを使い分けている`, targetType: "win", metric: "expression", polarity: "switch", isConfirmation: true }),
   likert({ id: "DS-M2", block: "expression", prompt: `競争心を出すかどうかは、勝てる見込みがあるかどうかで変わる`, targetType: "win", metric: "expression", polarity: "switch", isConfirmation: true }),
 ];
@@ -116,7 +128,7 @@ const connectExpression: QuestionDefinition[] = [
   likert({ id: "TS1", block: "expression", prompt: `誰かとつながりたい、関わってほしいという気持ちを、言葉や態度に出すことが多い`, targetType: "connect", metric: "expression", polarity: "positive" }),
   likert({ id: "TS2", block: "expression", prompt: `寂しさや「もっと関わってほしい」という気持ちは、相手に見せず自分の中へしまう`, targetType: "connect", metric: "expression", polarity: "negative" }),
   likert({ id: "TS3", block: "expression", prompt: `うれしい・寂しい・会いたいなど、関係にまつわる気持ちは相手へ伝えるほうだ`, targetType: "connect", metric: "expression", polarity: "positive" }),
-  likert({ id: "TS-FIT", block: "expression", prompt: `周囲に見せるかどうかとは別に、自分の中では「人と気持ちを分かち合いたい」「必要とされたい」という感覚が強い`, targetType: "connect", metric: "fit", polarity: "fit" }),
+  likert({ id: "TS-FIT", block: "expression", prompt: `周囲に見せるかどうかとは別に、自分の中では「人と気持ちを分かち合いたい」「必要とされたい」という感覚が強い`, targetType: "connect", metric: "fit", polarity: "fit", fitSignalRole: "primary" }),
   likert({ id: "TS-M1", block: "expression", prompt: `相手との距離や関係によって、つながりたい気持ちを見せるか隠すかを変えている`, targetType: "connect", metric: "expression", polarity: "switch", isConfirmation: true }),
   likert({ id: "TS-M2", block: "expression", prompt: `相手から反応が返ってきそうなときだけ、自分から関わりにいくことが多い`, targetType: "connect", metric: "expression", polarity: "switch", isConfirmation: true }),
 ];
@@ -149,7 +161,7 @@ const analyzeExpression: QuestionDefinition[] = [
   likert({ id: "RS1", block: "expression", prompt: `分からないことや納得できない点があると、周囲へ質問や確認をすることが多い`, targetType: "analyze", metric: "expression", polarity: "positive" }),
   likert({ id: "RS2", block: "expression", prompt: `理解できていないことがあっても、その場では言わず一人で調べて処理する`, targetType: "analyze", metric: "expression", polarity: "negative" }),
   likert({ id: "RS3", block: "expression", prompt: `自分のペースや考える時間が必要なときは、周囲へはっきり伝えるほうだ`, targetType: "analyze", metric: "expression", polarity: "positive" }),
-  likert({ id: "RS-FIT", block: "expression", prompt: `周囲に見せるかどうかとは別に、自分の中では「きちんと理解したい」「自分のペースを守りたい」という感覚が強い`, targetType: "analyze", metric: "fit", polarity: "fit" }),
+  likert({ id: "RS-FIT", block: "expression", prompt: `周囲に見せるかどうかとは別に、自分の中では「きちんと理解したい」「自分のペースを守りたい」という感覚が強い`, targetType: "analyze", metric: "fit", polarity: "fit", fitSignalRole: "primary" }),
   likert({ id: "RS-M1", block: "expression", prompt: `相手や立場によって、疑問を口にするか一人で調べるかを変えている`, targetType: "analyze", metric: "expression", polarity: "switch", isConfirmation: true }),
   likert({ id: "RS-M2", block: "expression", prompt: `質問しても安全だと感じる場では外へ出し、評価される場では黙ることが多い`, targetType: "analyze", metric: "expression", polarity: "switch", isConfirmation: true }),
 ];
@@ -182,7 +194,7 @@ const axisExpression: QuestionDefinition[] = [
   likert({ id: "JS1", block: "expression", prompt: `自分が大事にしている基準や「こうありたい」を、周囲へ言葉で伝えることが多い`, targetType: "axis", metric: "expression", polarity: "positive" }),
   likert({ id: "JS2", block: "expression", prompt: `自分の理想や違和感は、周囲には言わず自分の中だけで守る`, targetType: "axis", metric: "expression", polarity: "negative" }),
   likert({ id: "JS3", block: "expression", prompt: `意味がない、筋が違うと感じたときは、その違和感を相手へ示すほうだ`, targetType: "axis", metric: "expression", polarity: "positive" }),
-  likert({ id: "JS-FIT", block: "expression", prompt: `周囲に見せるかどうかとは別に、自分の中では「納得できる生き方をしたい」「意味のある形に近づけたい」という感覚が強い`, targetType: "axis", metric: "fit", polarity: "fit" }),
+  likert({ id: "JS-FIT", block: "expression", prompt: `周囲に見せるかどうかとは別に、自分の中では「納得できる生き方をしたい」「意味のある形に近づけたい」という感覚が強い`, targetType: "axis", metric: "fit", polarity: "fit", fitSignalRole: "primary" }),
   likert({ id: "JS-M1", block: "expression", prompt: `相手や場面によって、自分の基準を表へ出すか内側だけで守るかを変えている`, targetType: "axis", metric: "expression", polarity: "switch", isConfirmation: true }),
   likert({ id: "JS-M2", block: "expression", prompt: `関係が壊れないと判断した場面では理想を語り、そうでない場面では黙ることが多い`, targetType: "axis", metric: "expression", polarity: "switch", isConfirmation: true }),
 ];

@@ -1,6 +1,7 @@
 export * from "./types";
 export * from "./constants";
 export * from "./scoring";
+export * from "./routing";
 export * from "./report";
 export * from "./validate";
 export * from "./data/question-bank-contract";
