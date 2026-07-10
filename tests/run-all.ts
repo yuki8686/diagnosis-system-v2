@@ -9,3 +9,6 @@ import "./validation-version-reliability.test";
 import "./defense.test";
 import "./fixtures.test";
 import "./result-integration.test";
+import "./report-generation.test";
+import "./report-quality.test";
+import "./report-integration.test";

@@ -6,7 +6,7 @@ export type ExpressionId = (typeof EXPRESSION_IDS)[number];
 
 export type Confidence = "high" | "medium" | "low";
 export type EvidenceLevel = "direct" | "derived" | "inferred" | "possibility";
-export type WordingStrength = "standard" | "qualified" | "possibility" | "hidden";
+export type WordingStrength = "direct" | "moderate" | "soft";
 export type ScenarioScope = "general" | "work" | "romance" | "friendship" | "family" | "relationship";
 
 export type QuestionBlock =
@@ -333,4 +333,151 @@ export interface ReportFragment {
     | "module-cta";
   text: string;
   evidence: InsightEvidence;
+}
+
+export type ReportKind = "free" | "paid";
+export type ReportRoute = "resolved" | "low_confidence";
+export type ReportSectionId =
+  | "headline"
+  | "core_desire"
+  | "expression"
+  | "gap"
+  | "defense"
+  | "utilization"
+  | "strengths"
+  | "friction"
+  | "relationships"
+  | "work"
+  | "action"
+  | "observation"
+  | "disclaimer";
+
+export type ReportScenarioScope = "general" | "specific_answer" | "work_possibility" | "relationship_possibility";
+
+export interface AnswerReference {
+  questionId: string;
+  questionVersion: number;
+  prompt: string;
+  selectedOptionId: string;
+  selectedOptionText: string;
+  numericValue?: number;
+  metric?: string;
+  scenario?: string;
+}
+
+export interface PersonalizationAnchor {
+  id: string;
+  kind: "answer" | "gap_pair" | "defense" | "observed_reaction" | "utilization" | "comparison" | "confirmation";
+  sourceQuestionIds: string[];
+  summary: string;
+  confidence: Confidence;
+  opportunityLimited?: boolean;
+}
+
+export interface ReportEvidence {
+  evidenceLevel: EvidenceLevel;
+  sourceQuestionIds: string[];
+  sourceScores?: Record<string, number | string | boolean>;
+  confidence: Confidence;
+  wordingStrength: WordingStrength;
+  scenarioScope: ReportScenarioScope;
+}
+
+export interface ReportParagraph {
+  id: string;
+  text: string;
+  evidence: ReportEvidence;
+  anchorIds: string[];
+}
+
+export interface ReportSection {
+  id: ReportSectionId;
+  title: string;
+  paragraphs: ReportParagraph[];
+}
+
+export interface ReportMetadata {
+  sessionId: string;
+  generatedAt?: string;
+  questionBankVersion: string;
+  scoringVersion: string;
+  engineVersion: string;
+  reportTemplateVersion: string;
+  typeConfidence: Confidence;
+  expressionConfidence: Confidence;
+  gapConfidence: Confidence;
+  defenseConfidence: Confidence;
+  utilizationConfidence: Confidence;
+}
+
+export interface ActionProposal {
+  id: string;
+  text: string;
+  targetSignal: string;
+  sourceQuestionIds: string[];
+  expectedObservation: string;
+}
+
+interface ReportBase {
+  route: ReportRoute;
+  label: string;
+  subtitle: string;
+  anchors: PersonalizationAnchor[];
+  sections: ReportSection[];
+  metadata: ReportMetadata;
+}
+
+export interface FreeReport extends ReportBase {
+  kind: "free";
+  summary: string;
+}
+
+export type PaidReportQualityCode =
+  | "missing_version"
+  | "missing_section"
+  | "missing_evidence"
+  | "insufficient_answer_references"
+  | "missing_max_gap"
+  | "defense_overclaim"
+  | "opportunity_limited_overclaim"
+  | "low_confidence_overclaim"
+  | "wording_mismatch"
+  | "prohibited_expression"
+  | "excessive_free_overlap"
+  | "missing_action"
+  | "missing_action_evidence"
+  | "scenario_scope_mismatch";
+
+export interface PaidReportQualityIssue {
+  code: PaidReportQualityCode;
+  message: string;
+  sectionId?: ReportSectionId;
+  paragraphId?: string;
+}
+
+export type PaidReportQualityResult =
+  | { passed: true; issues: [] }
+  | { passed: false; issues: PaidReportQualityIssue[] };
+
+export interface PaidReport extends ReportBase {
+  kind: "paid";
+  answerReferences: AnswerReference[];
+  actionProposals: ActionProposal[];
+  qualityGate: PaidReportQualityResult;
+}
+
+export interface ReportInput {
+  result: DiagnosisResult;
+  route: DiagnosisRoute;
+  answers: AnswerRecord[];
+  questions: QuestionDefinition[];
+  freeAnchorLimit?: 0 | 1 | 2;
+}
+
+export type ProhibitedCategory = "inner_truth" | "causal_history" | "medical" | "deterministic_future" | "relationship_mindreading" | "type_superiority";
+
+export interface ProhibitedFinding {
+  category: ProhibitedCategory;
+  matchedText: string;
+  pattern: string;
 }

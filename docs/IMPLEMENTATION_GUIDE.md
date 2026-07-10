@@ -4,20 +4,27 @@
 
 仕様書で確定した測定設計を、質問文・判定ロジック・レポート文章が疎結合になる形で実装する。
 
-## 推奨配置
+## 配置
 
 ```text
-src/lib/diagnosis-v1/
+src/
   types.ts
   constants.ts
   scoring.ts
   report.ts
   validate.ts
+  report/
+    anchors.ts
+    evidence.ts
+    generate.ts
+    overlap.ts
+    prohibited.ts
+    quality.ts
+    wording.ts
+    templates/
+      labels.ts
   data/
     question-bank.ts
-    free-report-templates.ts
-    paid-report-templates.ts
-    compatibility-templates.ts
 ```
 
 ## 重要原則
@@ -42,19 +49,77 @@ src/lib/diagnosis-v1/
 3. `scoreBaseTypes`からブロックごとの単体テストを作る。
 4. 既存3回答パターンA/B/Cをfixture化する。
 5. 比較・ルーティング・確認後スコアを`buildDiagnosisResult`まで統合する。
-6. 無料レポート生成を実装する。
-7. 有料レポートの品質ゲートを実装する。
-8. localStorage再開とログ保存を接続する。
+6. `generateFreeReport`で無料レポートJSONを生成する。
+7. `generatePaidReport`で有料レポートJSONを生成し、品質ゲートを通す。
+8. UI層で保存・表示へ接続する（本リポジトリでは未実装）。
+
+## レポート生成契約
+
+入口は`ReportInput`です。
+
+```ts
+type ReportInput = {
+  result: DiagnosisResult;
+  route: DiagnosisRoute;
+  answers: AnswerRecord[];
+  questions: QuestionDefinition[];
+  freeAnchorLimit?: 0 | 1 | 2;
+};
+```
+
+レポート層は完成済み結果を文章へ合成し、タイプ、出し方、ズレ、防衛、使いこなしを再計算しません。同一入力は同一JSONを返し、生成時刻は呼び出し側が必要に応じて付与します。
+
+無料版は12ラベルまたは上位2候補ラベルを生成し、アンカーは0〜2件です。有料版はresolvedで13セクション、low-confidenceで8セクションを生成します。low-confidenceでは単独タイプを断定せず、比較候補と切り替わる条件を価値として扱います。
+
+各段落には次を必須とします。
+
+- `evidenceLevel`: `direct` / `derived` / `inferred` / `possibility`
+- `sourceQuestionIds`
+- ブロック別`confidence`
+- `wordingStrength`: `direct` / `moderate` / `soft`
+- `scenarioScope`
+
+confidenceがhighなら`direct`、mediumなら`moderate`、lowなら`soft`です。同一ブロックで異なるmajor信頼性issueが2種類以上重なる場合だけ、そのブロックを`soft`へ下げます。infoの`positionStreak`単独では弱めません。
+
+有料版の`AnswerReference`は異なる質問IDを3件以上保持し、タイプまたは比較から1件以上、ズレ・防衛・使いこなしから1件以上を含めます。最大ズレペアがある場合はギャップ章の根拠へ接続し、確認回答が最終判定に使われた場合はconfirmationアンカーを作ります。
 
 ## 有料品質ゲート
 
-有料レポート生成前に最低限以下を検証する。
+`validatePaidReport`は最低限以下を検証する。
 
-- `maxGapPair`がある
-- 防衛プロファイルがある
-- 自覚・運用スコアがある
-- 直接回答参照を3か所以上使用する
-- 行動提案が1つある
-- 各文に`InsightEvidence`がある
+- 4種versionとroute別必須セクション
+- 全段落のevidenceと`sourceQuestionIds`
+- 異なる直接回答参照3件以上と参照ブロックの構成
+- 最大ズレ場面の反映
+- 防衛low、同率、`opportunityLimited`の過剰断定防止
+- low-confidenceでの単独タイプ断定防止
+- confidenceと`wordingStrength`の一致
+- 禁止表現カテゴリ6種
+- 無料版との文単位正規化重複率（上限`0.35`）
+- 根拠付き行動提案
+- 未測定領域の`possibility`限定
 
-満たさない場合は有料レポートを生成せず、テンプレート不備として内部エラーにする。
+満たさない場合、検査関数は理由配列を返します。`generatePaidReport`は`PaidReportQualityError`を送出し、品質不合格のレポートを成功扱いで返しません。
+
+禁止表現検査は、本人の本心断定、形成原因、医療、決定論的未来、相手の感情・関係の将来、タイプ優劣をカテゴリ付きで検出します。無料／有料の重複検査は空白・句読点・改行・ラベルを正規化し、タイトルと注記を除外します。
+
+## version
+
+レポートmetadataには次を保存します。
+
+- `questionBankVersion`
+- `scoringVersion`
+- `engineVersion`
+- `reportTemplateVersion`
+
+結果とrouteのversion不一致、`AnswerRecord.questionVersion`と質問定義の不一致、回答ID重複は生成開始前に拒否します。
+
+## テスト
+
+```bash
+npm ci
+npm run typecheck
+npm test
+```
+
+レポートテストは12ラベル、low-confidence、アンカー0〜2件、回答参照、最大ズレ、防衛同率・low・機会数制限、確認回答、4段階evidence、3段階wording、禁止表現、品質ゲート、重複率境界、A・B・C統合を検証します。
