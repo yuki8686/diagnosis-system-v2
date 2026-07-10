@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { questionBank } from "../src/data/question-bank";
 import { buildDiagnosisResult, scoreExpression, scoreGap } from "../src/scoring";
+import { buildDiagnosisRoute } from "../src/routing";
 import type { AnswerRecord, QuestionDefinition } from "../src/types";
 
 const at = (questionId: string, optionId: string, numericValue?: number): AnswerRecord => ({
@@ -36,7 +37,8 @@ const gapA = gapAValues.flatMap(([id,h,p]) => [at(`${id}-H`,String(h),h),at(`${i
 const defenseA = [at("D1","A"),at("D2","A"),at("D3","A"),at("D4","A"),at("D5","C"),at("D6","C"),at("D7","C")];
 const utilA = [at("U-A1","5",5),at("U-A2","4",4),at("U-R1","2",2),at("U-O1","4",4),at("U-O2","5",5),at("U-R2","3",3)];
 const idsA = [...commonA,...exprA,...gapA,...defenseA,...utilA].map((a) => a.questionId);
-const resultA = buildDiagnosisResult({ questions: find(idsA), answers: [...commonA,...exprA,...gapA,...defenseA,...utilA], expressionIsGeneric: false, typeFitSignals: { fitItemLow:false,baseMarginSmall:false,secondFitSignalLow:false } });
+const routeA = buildDiagnosisRoute({ sessionId: "fixture-a", sessionSeed: "fixture-a", transitionSequence: 1, resolution: { kind: "resolved", primary: "win", secondary: "connect", source: "base" }, confirmationNeeds: {} });
+const resultA = buildDiagnosisResult({ questions: find(idsA), answers: [...commonA,...exprA,...gapA,...defenseA,...utilA], routingState: routeA, expressionIsGeneric: false, typeFitSignals: { fitItemLow:false,baseMarginSmall:false,secondFitSignalLow:false } });
 assert.equal(resultA.resolution.kind, "resolved");
 assert.equal(resultA.resolution.kind === "resolved" && resultA.resolution.primary, "win");
 assert.equal(resultA.expression.pattern, "outward");
@@ -58,7 +60,8 @@ const genericGapValues: Array<[string,number,number]> = [["GZ1",2,4],["GZ2",4,2]
 const genericGap = genericGapValues.flatMap(([id,h,p]) => [at(`${id}-H`,String(h),h),at(`${id}-P`,String(p),p)]);
 const lowUtil = [at("U-A1","3",3),at("U-R1","3",3),at("U-O1","3",3),at("T-U-A1","3",3),at("T-U-R1","3",3),at("T-U-O1","4",4)];
 const idsC = [...commonC,...genericExpr,...genericGap,...defenseA,...lowUtil].map((a)=>a.questionId);
-const resultC = buildDiagnosisResult({ questions: find(idsC), answers:[...commonC,...genericExpr,...genericGap,...defenseA,...lowUtil], comparisons:[{pair:["win","connect"],answers:["win","connect","win","connect"]}], expressionIsGeneric:true, typeFitSignals:{fitItemLow:false,baseMarginSmall:true,secondFitSignalLow:false} });
+const routeC = buildDiagnosisRoute({ sessionId: "fixture-c", sessionSeed: "fixture-c", transitionSequence: 1, resolution: { kind: "low-confidence", candidates: ["win", "connect"] }, confirmationNeeds: {} });
+const resultC = buildDiagnosisResult({ questions: find(idsC), answers:[...commonC,...genericExpr,...genericGap,...defenseA,...lowUtil], routingState: routeC, expressionIsGeneric:true, typeFitSignals:{fitItemLow:false,baseMarginSmall:true,secondFitSignalLow:false} });
 assert.equal(resultC.route,"low-confidence");
 assert.equal(resultC.expression.pattern,"adaptive");
 assert.equal(resultC.expression.switchScore,5);

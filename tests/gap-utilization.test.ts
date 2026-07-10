@@ -97,13 +97,13 @@ assert.equal(pendingExpression.confidence, "low");
 assert.equal(pendingExpression.requiresConfirmation, true);
 assert.equal(pendingExpression.confirmationStatus, "pending");
 
-const adaptiveExpression = scoreExpression(expressionQuestions, [...middleBase, at("DS-M1", 4), at("DS-M2", 5)], false);
+const adaptiveExpression = scoreExpression(expressionQuestions, [...middleBase, at("DS-M1", 4), at("DS-M2", 5)], false, { confirmationActivated: true, confirmationAnswered: true, confirmationQuestionIds: ["DS-M1", "DS-M2"] });
 assert.equal(adaptiveExpression.pattern, "adaptive");
 assert.equal(adaptiveExpression.confidence, "medium");
 assert.equal(adaptiveExpression.confirmationStatus, "resolved");
 
 const outwardMiddle = [at("DS1", 4), at("DS2", 3), at("DS3", 3), at("DS-FIT", 5), at("DS-M1", 2), at("DS-M2", 3)];
-const leanedExpression = scoreExpression(expressionQuestions, outwardMiddle, false);
+const leanedExpression = scoreExpression(expressionQuestions, outwardMiddle, false, { confirmationActivated: true, confirmationAnswered: true, confirmationQuestionIds: ["DS-M1", "DS-M2"] });
 assert.equal(leanedExpression.rawScore, 10);
 assert.equal(leanedExpression.pattern, "outward");
 assert.equal(leanedExpression.confidence, "low");

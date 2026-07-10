@@ -1,7 +1,26 @@
-import { TYPE_IDS, type QuestionDefinition } from "./types";
+import { TYPE_IDS, type AnswerRecord, type QuestionDefinition } from "./types";
 import { EXPECTED_COUNTS, flattenQuestionBank, type QuestionBankSections } from "./data/question-bank-contract";
 
 export interface ValidationIssue { severity: "error" | "warning"; code: string; message: string; questionId?: string; }
+
+export function validateAnswerRecords(questions: QuestionDefinition[], answers: AnswerRecord[]): void {
+  const questionMap = new Map(questions.map((question) => [question.id, question]));
+  const seen = new Set<string>();
+  for (const answer of answers) {
+    if (seen.has(answer.questionId)) throw new Error(`Duplicate AnswerRecord questionId: ${answer.questionId}`);
+    seen.add(answer.questionId);
+    const question = questionMap.get(answer.questionId);
+    if (!question) throw new Error(`Unknown answer questionId: ${answer.questionId}`);
+    if (answer.questionVersion !== question.version) throw new Error(`Question version mismatch: ${answer.questionId}; answerVersion=${answer.questionVersion}; expectedVersion=${question.version}`);
+    const option = question.options.find((item) => item.id === answer.optionId);
+    if (!option) throw new Error(`Unknown optionId for ${answer.questionId}: ${answer.optionId}`);
+    if (question.format === "likert-5") {
+      if (answer.numericValue == null) throw new Error(`numericValue is required for Likert question ${answer.questionId}`);
+      const expectedValue = option.score ?? Number(option.id);
+      if (!Number.isFinite(expectedValue) || answer.numericValue !== expectedValue) throw new Error(`Likert answer mismatch: ${answer.questionId}; optionId=${answer.optionId}; numericValue=${answer.numericValue}`);
+    }
+  }
+}
 
 export function validateQuestionBank(bank: QuestionBankSections): ValidationIssue[] {
   const issues: ValidationIssue[] = [];

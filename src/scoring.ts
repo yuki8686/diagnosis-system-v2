@@ -1,19 +1,24 @@
-import { DEFENSE_CATEGORIES, TYPE_IDS, type AnswerRecord, type ComparisonResolution, type ComparisonScores, type Confidence, type DefenseCategory, type DefenseResult, type DiagnosisResult, type ExpressionResult, type GapPairResult, type GapResult, type QuestionDefinition, type ReliabilityAssessment, type ReliabilityFlags, type TypeFitResult, type TypeId, type TypeResolution, type TypeScores, type UtilizationResult } from "./types";
-import { ENGINE_VERSION, QUESTION_BANK_VERSION, SCORING_VERSION, THRESHOLDS } from "./constants";
+import { DEFENSE_CATEGORIES, TYPE_IDS, type AnswerRecord, type BlockConfidences, type ComparisonInput, type ComparisonResolution, type Confidence, type DefenseCategory, type DefenseResult, type DiagnosisBlock, type DiagnosisResult, type DiagnosisRoute, type ExpressionResult, type GapPairResult, type GapResult, type QuestionDefinition, type ReliabilityAssessment, type ReliabilityFlags, type ReliabilityIssue, type ResultMetadata, type TypeFitResult, type TypeId, type TypeResolution, type TypeScores, type UtilizationResult } from "./types";
+import { ENGINE_VERSION, QUESTION_BANK_VERSION, REPORT_TEMPLATE_VERSION, SCORING_VERSION, THRESHOLDS } from "./constants";
+import { validateAnswerRecords } from "./validate";
 
 const emptyTypeScores = (): TypeScores => ({ win: 0, connect: 0, analyze: 0, axis: 0 });
 
 function answerMap(answers: AnswerRecord[]): Map<string, AnswerRecord> {
+  const ids = answers.map((answer) => answer.questionId);
+  if (new Set(ids).size !== ids.length) throw new Error("Duplicate AnswerRecord questionId");
   return new Map(answers.map((answer) => [answer.questionId, answer]));
 }
 
 function numericAnswer(answer: AnswerRecord | undefined): number {
   if (!answer || answer.numericValue == null) throw new Error(`Numeric answer is missing: ${answer?.questionId ?? "unknown"}`);
+  if (Number(answer.optionId) !== answer.numericValue) throw new Error(`Likert answer mismatch: ${answer.questionId}; optionId=${answer.optionId}; numericValue=${answer.numericValue}`);
   if (answer.numericValue < 1 || answer.numericValue > 5) throw new Error(`Likert answer out of range: ${answer.questionId}`);
   return answer.numericValue;
 }
 
 export function scoreBaseTypes(questions: QuestionDefinition[], answers: AnswerRecord[]): TypeScores {
+  validateAnswerRecords(questions, answers);
   const scores = emptyTypeScores();
   const map = answerMap(answers);
   for (const question of questions.filter((q) => q.block === "common-type")) {
@@ -30,9 +35,24 @@ function rankedTypes(scores: TypeScores): Array<[TypeId, number]> {
   return TYPE_IDS.map((id) => [id, scores[id]] as [TypeId, number]).sort((a, b) => b[1] - a[1]);
 }
 
-export function aggregateComparison(pair: [TypeId, TypeId], questions: QuestionDefinition[], answers: AnswerRecord[]): ComparisonResolution {
+const samePair = (left: [TypeId, TypeId], right: [TypeId, TypeId]): boolean => [...left].sort().join("|") === [...right].sort().join("|");
+
+export function aggregateComparison(questions: QuestionDefinition[], input: ComparisonInput): ComparisonResolution {
+  const { expectedPair: pair, answers, phase, initialQuestionIds, additionalQuestionIds } = input;
+  if (answers.length > 4) throw new Error("Comparison accepts at most four answers");
+  if (!initialQuestionIds[0].endsWith("-1") || !initialQuestionIds[1].endsWith("-2")) throw new Error("Initial comparison questions must be -1 and -2");
+  if (!additionalQuestionIds[0].endsWith("-3") || !additionalQuestionIds[1].endsWith("-4")) throw new Error("Additional comparison questions must be -3 and -4");
+  const configuredIds = [...initialQuestionIds, ...additionalQuestionIds];
+  if (new Set(configuredIds).size !== 4) throw new Error("Comparison question ids must be unique");
   const counts = emptyTypeScores();
   const questionMap = new Map(questions.map((question) => [question.id, question]));
+  if (configuredIds.some((questionId) => !questionMap.has(questionId))) throw new Error("Comparison question id is outside the configured questions");
+  for (const questionId of configuredIds) {
+    const mappedTypes = questionMap.get(questionId)!.options.map((option) => option.typeId).filter((value): value is TypeId => Boolean(value));
+    if (mappedTypes.length !== 2 || !samePair(pair, [mappedTypes[0], mappedTypes[1]])) throw new Error(`Comparison question is outside expected pair: ${questionId}`);
+  }
+  for (const answer of answers) if (!configuredIds.includes(answer.questionId)) throw new Error(`Question is not part of comparison pair: ${answer.questionId}`);
+  validateAnswerRecords(questions, answers);
   const answeredQuestionIds = new Set<string>();
   const rawAnswers = answers.map((answer) => {
     if (answeredQuestionIds.has(answer.questionId)) throw new Error(`Duplicate comparison answer: ${answer.questionId}`);
@@ -44,24 +64,45 @@ export function aggregateComparison(pair: [TypeId, TypeId], questions: QuestionD
     counts[option.typeId] += 1;
     return { questionId: answer.questionId, selectedType: option.typeId };
   });
-  const base = { pair, counts, rawAnswers };
-  if (answers.length < 2) return { ...base, status: "needs_more", nextQuestionIds: questions.slice(answers.length, 2).map((question) => question.id) };
-  if (answers.length === 2) {
-    const winner = pair.find((typeId) => counts[typeId] === 2);
-    if (winner) return { ...base, status: "resolved", winner, nextQuestionIds: [] };
-    return { ...base, status: "needs_more", nextQuestionIds: questions.slice(2, 4).map((question) => question.id) };
+  const answerIds = answers.map((answer) => answer.questionId);
+  const expectedInitialPrefix = initialQuestionIds.slice(0, answers.length);
+  const initialCounts = rawAnswers.slice(0, 2).reduce((result, item) => ({ ...result, [item.selectedType]: result[item.selectedType] + 1 }), emptyTypeScores());
+  if (phase === "initial") {
+    if (answers.length > 2 || answerIds.some((id, index) => id !== expectedInitialPrefix[index])) throw new Error("Initial comparison accepts only -1/-2 in order");
+  } else if (phase === "additional") {
+    if (answers.length < 2 || answerIds[0] !== initialQuestionIds[0] || answerIds[1] !== initialQuestionIds[1]) throw new Error("Additional comparison requires both initial answers");
+    if (!pair.every((typeId) => initialCounts[typeId] === 1)) throw new Error("Additional comparison is allowed only after an initial 1-1 result; initial 2-0 is completed");
+    const expectedOrder = [...initialQuestionIds, ...additionalQuestionIds].slice(0, answers.length);
+    if (answerIds.some((id, index) => id !== expectedOrder[index])) throw new Error("Additional comparison question order is invalid");
+  } else {
+    if (answers.length !== 2 && answers.length !== 4) throw new Error("Completed comparison requires exactly two or four answers");
+    const expectedOrder = [...initialQuestionIds, ...additionalQuestionIds].slice(0, answers.length);
+    if (answerIds.some((id, index) => id !== expectedOrder[index])) throw new Error("Completed comparison question order is invalid");
+    if (answers.length === 2 && !pair.some((typeId) => initialCounts[typeId] === 2)) throw new Error("Two-answer completed comparison requires an initial 2-0 result");
+    if (answers.length === 4 && !pair.every((typeId) => initialCounts[typeId] === 1)) throw new Error("Four-answer completed comparison requires an initial 1-1 result");
   }
-  if (answers.length < 4) return { ...base, status: "needs_more", nextQuestionIds: questions.slice(answers.length, 4).map((question) => question.id) };
-  if (answers.length > 4) throw new Error("Comparison accepts at most four answers");
+  const base = { pair, initialQuestionIds, additionalQuestionIds, counts, rawAnswers };
+  if (phase === "initial" && answers.length < 2) return { ...base, status: "needs_more", phase: "initial", nextQuestionIds: initialQuestionIds.slice(answers.length) };
+  if (phase === "initial" && answers.length === 2) {
+    const winner = pair.find((typeId) => counts[typeId] === 2);
+    if (winner) return { ...base, status: "resolved", phase: "completed", winner, nextQuestionIds: [] };
+    return { ...base, status: "needs_more", phase: "additional", nextQuestionIds: [...additionalQuestionIds] };
+  }
+  if (phase === "completed" && answers.length === 2) {
+    const winner = pair.find((typeId) => counts[typeId] === 2)!;
+    return { ...base, status: "resolved", phase: "completed", winner, nextQuestionIds: [] };
+  }
+  if (answers.length < 4) return { ...base, status: "needs_more", phase: "additional", nextQuestionIds: additionalQuestionIds.slice(answers.length - 2) };
   const winner = pair.find((typeId) => counts[typeId] >= 3);
   return winner
-    ? { ...base, status: "resolved", winner, nextQuestionIds: [] }
-    : { ...base, status: "low_confidence", nextQuestionIds: [] };
+    ? { ...base, status: "resolved", phase: "completed", winner, nextQuestionIds: [] }
+    : { ...base, status: "low_confidence", phase: "completed", nextQuestionIds: [] };
 }
 
-export function resolveType(base: TypeScores, comparisons: ComparisonScores[] | ComparisonResolution = []): TypeResolution {
+export function resolveType(base: TypeScores, comparison?: ComparisonResolution): TypeResolution {
   const ranked = rankedTypes(base);
   const [first, second, third] = ranked;
+  if (comparison && !samePair(comparison.pair, [first[0], second[0]])) throw new Error("Comparison pair must match the base top two types");
   if (first[1] <= THRESHOLDS.type.flatTopMax || first[1] - third[1] <= THRESHOLDS.type.clusterTopToThirdMax) {
     return { kind: "low-confidence", candidates: [first[0], second[0], third[0]] };
   }
@@ -71,9 +112,7 @@ export function resolveType(base: TypeScores, comparisons: ComparisonScores[] | 
       ? { kind: "resolved", primary: first[0], secondary, source: "base" }
       : { kind: "resolved", primary: first[0], source: "base" };
   }
-  const resolution = Array.isArray(comparisons)
-    ? comparisons.find((item) => item.pair.includes(first[0]) && item.pair.includes(second[0]))?.winner
-    : comparisons.status === "resolved" ? comparisons.winner : undefined;
+  const resolution = comparison?.status === "resolved" ? comparison.winner : undefined;
   if (resolution) {
     const secondary = resolution === first[0] ? second[0] : first[0];
     return { kind: "resolved", primary: resolution, secondary, source: "comparison" };
@@ -81,7 +120,17 @@ export function resolveType(base: TypeScores, comparisons: ComparisonScores[] | 
   return { kind: "low-confidence", candidates: [first[0], second[0]] };
 }
 
-export function scoreExpression(questions: QuestionDefinition[], answers: AnswerRecord[], isGeneric: boolean): ExpressionResult {
+export interface ExpressionScoringOptions {
+  confirmationActivated?: boolean;
+  confirmationSkipped?: boolean;
+  confirmationAnswered?: boolean;
+  confirmationQuestionIds?: [string, string];
+}
+
+export function scoreExpression(questions: QuestionDefinition[], answers: AnswerRecord[], isGeneric: boolean, options: ExpressionScoringOptions = {}): ExpressionResult {
+  if (options.confirmationActivated && options.confirmationSkipped) throw new Error("Invalid expression confirmation options: cannot activate and skip confirmation");
+  if (options.confirmationAnswered && !options.confirmationQuestionIds) throw new Error("confirmationQuestionIds are required when confirmationAnswered=true");
+  validateAnswerRecords(questions, answers);
   const map = answerMap(answers);
   const items = questions.filter((q) => (isGeneric ? q.block === "generic-expression" : q.block === "expression") && q.metric === "expression" && !q.isConfirmation && (q.polarity === "positive" || q.polarity === "negative"));
   const values = items.map((q) => {
@@ -90,7 +139,7 @@ export function scoreExpression(questions: QuestionDefinition[], answers: Answer
   });
   if (values.length < 3) throw new Error("Expression scoring requires at least three scored items");
   const rawScore = values.reduce((sum, value) => sum + value, 0);
-  const switchItems = questions.filter((q) => (isGeneric ? q.block === "generic-expression" : q.block === "expression") && q.polarity === "switch");
+  const switchItems = questions.filter((q) => (isGeneric ? q.block === "generic-expression" : q.block === "expression") && q.polarity === "switch" && (isGeneric || !q.isConfirmation || options.confirmationActivated));
   const answeredSwitchValues = switchItems
     .map((q) => map.get(q.id))
     .filter((answer): answer is AnswerRecord => Boolean(answer))
@@ -117,7 +166,7 @@ export function scoreExpression(questions: QuestionDefinition[], answers: Answer
     } else {
       pattern = rawScore >= 10 ? "outward" : "inward";
       confidence = "low";
-      confirmationStatus = switchScore == null ? "pending" : "unresolved";
+      confirmationStatus = options.confirmationSkipped ? "skipped" : switchScore == null ? "pending" : "unresolved";
     }
   }
   return {
@@ -142,9 +191,14 @@ const median = (values: number[]): number => {
 export interface GapScoringOptions {
   includeConfirmation?: boolean;
   confirmationSkipped?: boolean;
+  confirmationAnswered?: boolean;
+  confirmationQuestionIds?: [string, string];
 }
 
 export function scoreGap(questions: QuestionDefinition[], answers: AnswerRecord[], options: GapScoringOptions = {}): GapResult {
+  if (options.includeConfirmation && options.confirmationSkipped) throw new Error("Invalid gap confirmation options: cannot set both includeConfirmation and confirmationSkipped");
+  if (options.confirmationAnswered && !options.confirmationQuestionIds) throw new Error("confirmationQuestionIds are required when confirmationAnswered=true");
+  validateAnswerRecords(questions, answers);
   const map = answerMap(answers);
   const pairs = new Map<string, { inner?: QuestionDefinition; public?: QuestionDefinition }>();
   for (const q of questions.filter((item) => item.metric === "gap" && item.pairId && (options.includeConfirmation || !item.isConfirmation))) {
@@ -208,6 +262,7 @@ export function scoreGap(questions: QuestionDefinition[], answers: AnswerRecord[
 }
 
 export function scoreDefense(questions: QuestionDefinition[], answers: AnswerRecord[]): DefenseResult {
+  validateAnswerRecords(questions, answers);
   const map = answerMap(answers);
   const counts = Object.fromEntries(DEFENSE_CATEGORIES.map((id) => [id, 0])) as DefenseResult["counts"];
   const opportunities = Object.fromEntries(DEFENSE_CATEGORIES.map((id) => [id, 0])) as DefenseResult["opportunities"];
@@ -271,15 +326,21 @@ function utilizationContradictions(questions: QuestionDefinition[], answers: Ans
 }
 
 export function needsUtilizationConfirmation(questions: QuestionDefinition[], answers: AnswerRecord[]): boolean {
+  validateAnswerRecords(questions, answers);
   return utilizationContradictions(questions, answers).length > 0;
 }
 
 export interface UtilizationScoringOptions {
   confirmationRequested?: boolean;
   confirmationSkipped?: boolean;
+  confirmationAnswered?: boolean;
+  confirmationQuestionIds?: [string, string];
 }
 
 export function scoreUtilization(questions: QuestionDefinition[], answers: AnswerRecord[], options: UtilizationScoringOptions = {}): UtilizationResult {
+  if (options.confirmationRequested && options.confirmationSkipped) throw new Error("Invalid utilization confirmation options: cannot set both confirmationRequested and confirmationSkipped");
+  if (options.confirmationAnswered && !options.confirmationQuestionIds) throw new Error("confirmationQuestionIds are required when confirmationAnswered=true");
+  validateAnswerRecords(questions, answers);
   const map = answerMap(answers);
   const relevant = questions.filter((q) => q.block === "utilization" && !q.isConfirmation);
   const scored = (metric: "awareness" | "utilization") => relevant.filter((q) => q.metric === metric).map((q) => {
@@ -316,36 +377,38 @@ export function scoreUtilization(questions: QuestionDefinition[], answers: Answe
 }
 
 export function detectReliability(questions: QuestionDefinition[], answers: AnswerRecord[]): ReliabilityFlags {
-  const durations = answers.map((a) => a.durationMs).filter((n) => Number.isFinite(n));
+  validateAnswerRecords(questions, answers);
+  const durations = answers.map((a) => a.durationMs).filter((n): n is number => Number.isFinite(n) && n! >= 0);
   const fastResponse = durations.length > 0 && median(durations) < THRESHOLDS.reliability.medianFastResponseMs;
-  let maxPositionRun = 0, currentPositionRun = 0, lastPosition: number | undefined;
+  let maxPositionRun = 0, currentPositionRun = 0, lastPosition: number | undefined, currentPositionIds: string[] = [], maxPositionIds: string[] = [];
   for (const answer of answers) {
-    if (answer.displayedPosition != null && answer.displayedPosition === lastPosition) currentPositionRun += 1;
-    else currentPositionRun = 1;
+    if (answer.displayedPosition != null && answer.displayedPosition === lastPosition) { currentPositionRun += 1; currentPositionIds.push(answer.questionId); }
+    else { currentPositionRun = 1; currentPositionIds = [answer.questionId]; }
     lastPosition = answer.displayedPosition;
-    maxPositionRun = Math.max(maxPositionRun, currentPositionRun);
+    if (currentPositionRun > maxPositionRun) { maxPositionRun = currentPositionRun; maxPositionIds = [...currentPositionIds]; }
   }
   const likertAnswers = answers.filter((a) => a.numericValue != null);
-  let maxLikertRun = 0, currentLikertRun = 0, lastLikert: number | undefined;
+  let maxLikertRun = 0, currentLikertRun = 0, lastLikert: number | undefined, currentLikertIds: string[] = [], maxLikertIds: string[] = [];
   for (const answer of likertAnswers) {
-    if (answer.numericValue === lastLikert) currentLikertRun += 1;
-    else currentLikertRun = 1;
+    if (answer.numericValue === lastLikert) { currentLikertRun += 1; currentLikertIds.push(answer.questionId); }
+    else { currentLikertRun = 1; currentLikertIds = [answer.questionId]; }
     lastLikert = answer.numericValue;
-    maxLikertRun = Math.max(maxLikertRun, currentLikertRun);
+    if (currentLikertRun > maxLikertRun) { maxLikertRun = currentLikertRun; maxLikertIds = [...currentLikertIds]; }
   }
   const questionMap = new Map(questions.map((question) => [question.id, question]));
-  let maxSemanticRun = 0, currentSemanticRun = 0, lastSemantic: string | undefined;
+  let maxSemanticRun = 0, currentSemanticRun = 0, lastSemantic: string | undefined, currentSemanticIds: string[] = [], maxSemanticIds: string[] = [];
   for (const answer of answers) {
     const question = questionMap.get(answer.questionId);
     const option = question?.options.find((item) => item.id === answer.optionId);
     const semantic = option?.typeId ? `type:${option.typeId}` : option?.defenseCategory ? `defense:${option.defenseCategory}` : undefined;
-    if (semantic && semantic === lastSemantic) currentSemanticRun += 1;
-    else currentSemanticRun = semantic ? 1 : 0;
+    if (semantic && semantic === lastSemantic) { currentSemanticRun += 1; currentSemanticIds.push(answer.questionId); }
+    else { currentSemanticRun = semantic ? 1 : 0; currentSemanticIds = semantic ? [answer.questionId] : []; }
     lastSemantic = semantic;
-    maxSemanticRun = Math.max(maxSemanticRun, currentSemanticRun);
+    if (currentSemanticRun > maxSemanticRun) { maxSemanticRun = currentSemanticRun; maxSemanticIds = [...currentSemanticIds]; }
   }
   const reverseContradiction = utilizationContradictions(questions, answers).length > 0;
   const map = answerMap(answers);
+  const mismatchSourceIds: string[] = [];
   const similarQuestionMismatch = questions.some((confirmation) => {
     if (!confirmation.isConfirmation || confirmation.polarity !== "positive" || (confirmation.metric !== "awareness" && confirmation.metric !== "utilization")) return false;
     const confirmationAnswer = map.get(confirmation.id);
@@ -353,8 +416,29 @@ export function detectReliability(questions: QuestionDefinition[], answers: Answ
     const base = questions.filter((question) => !question.isConfirmation && question.targetType === confirmation.targetType && question.metric === confirmation.metric && question.polarity === "positive" && map.has(question.id));
     if (!base.length) return false;
     const average = base.map((question) => numericAnswer(map.get(question.id))).reduce((sum, value) => sum + value, 0) / base.length;
-    return Math.abs(numericAnswer(confirmationAnswer) - average) >= 3;
+    const mismatched = Math.abs(numericAnswer(confirmationAnswer) - average) >= 3;
+    if (mismatched) mismatchSourceIds.push(confirmation.id, ...base.map((question) => question.id));
+    return mismatched;
   });
+  const questionBlock = (questionId: string): DiagnosisBlock | undefined => {
+    const question = questionMap.get(questionId);
+    if (!question) return undefined;
+    if (question.block === "common-type" || question.block === "type-comparison") return "type";
+    if (question.block === "expression" || question.block === "generic-expression") return "expression";
+    if (question.block.includes("gap")) return "gap";
+    if (question.block === "defense") return "defense";
+    if (question.block === "utilization") return "utilization";
+    return undefined;
+  };
+  const blocksFor = (source: AnswerRecord[]): DiagnosisBlock[] => [...new Set(source.map((answer) => questionBlock(answer.questionId)).filter((block): block is DiagnosisBlock => Boolean(block)))];
+  const blocksForIds = (sourceIds: string[]): DiagnosisBlock[] => [...new Set(sourceIds.map((questionId) => questionBlock(questionId)).filter((block): block is DiagnosisBlock => Boolean(block)))];
+  const issues: ReliabilityIssue[] = [];
+  if (fastResponse) issues.push({ flag: "fastResponse", affectedBlocks: blocksFor(answers.filter((answer) => Number.isFinite(answer.durationMs))), severity: "major", sourceQuestionIds: answers.filter((answer) => Number.isFinite(answer.durationMs)).map((answer) => answer.questionId) });
+  if (maxPositionRun >= THRESHOLDS.reliability.positionRunLength) issues.push({ flag: "positionStreak", affectedBlocks: blocksForIds(maxPositionIds), severity: "info", sourceQuestionIds: maxPositionIds });
+  if (maxSemanticRun >= THRESHOLDS.reliability.positionRunLength) issues.push({ flag: "semanticMonotony", affectedBlocks: blocksForIds(maxSemanticIds), severity: "major", sourceQuestionIds: maxSemanticIds });
+  if (maxLikertRun >= THRESHOLDS.reliability.likertRunLength) issues.push({ flag: "likertSameValueStreak", affectedBlocks: blocksForIds(maxLikertIds), severity: "major", sourceQuestionIds: maxLikertIds });
+  if (reverseContradiction) issues.push({ flag: "reverseContradiction", affectedBlocks: ["utilization"], severity: "major", sourceQuestionIds: answers.filter((answer) => questionBlock(answer.questionId) === "utilization").map((answer) => answer.questionId) });
+  if (similarQuestionMismatch) issues.push({ flag: "similarQuestionMismatch", affectedBlocks: blocksForIds(mismatchSourceIds), severity: "major", sourceQuestionIds: [...new Set(mismatchSourceIds)] });
   return {
     fastResponse,
     positionStreak: maxPositionRun >= THRESHOLDS.reliability.positionRunLength,
@@ -362,19 +446,36 @@ export function detectReliability(questions: QuestionDefinition[], answers: Answ
     likertSameValueStreak: maxLikertRun >= THRESHOLDS.reliability.likertRunLength,
     reverseContradiction,
     similarQuestionMismatch,
+    issues,
   };
 }
 
 export function reliabilityAssessment(flags: ReliabilityFlags): ReliabilityAssessment {
   const mainSignalCount = [flags.fastResponse, flags.semanticMonotony, flags.likertSameValueStreak, flags.reverseContradiction, flags.similarQuestionMismatch].filter(Boolean).length;
+  const weakenedBlocks = (["type", "expression", "gap", "defense", "utilization"] as const).filter((block) => new Set(flags.issues.filter((issue) => issue.severity === "major" && issue.affectedBlocks.includes(block)).map((issue) => issue.flag)).size >= 2);
   return {
     mainSignalCount,
-    overallWeakening: mainSignalCount >= 2,
+    overallWeakening: weakenedBlocks.length > 0,
     blockContradictions: [
       ...(flags.reverseContradiction ? ["reverseContradiction" as const] : []),
       ...(flags.similarQuestionMismatch ? ["similarQuestionMismatch" as const] : []),
     ],
+    weakenedBlocks,
   };
+}
+
+export function applyReliabilityToConfidences(confidences: BlockConfidences, issues: ReliabilityIssue[]): BlockConfidences {
+  const next = { ...confidences };
+  for (const block of ["type", "expression", "gap", "defense", "utilization"] as const) {
+    const majorFlags = new Set(issues.filter((issue) => issue.severity === "major" && issue.affectedBlocks.includes(block)).map((issue) => issue.flag));
+    if (majorFlags.size >= 2) next[block] = "low";
+  }
+  return next;
+}
+
+export function classifyResultVersion(metadata: ResultMetadata): "current" | "read-only" {
+  if (!metadata.reportTemplateVersion?.trim()) throw new Error("reportTemplateVersion is required");
+  return metadata.questionBankVersion === QUESTION_BANK_VERSION && metadata.scoringVersion === SCORING_VERSION && metadata.engineVersion === ENGINE_VERSION && metadata.reportTemplateVersion === REPORT_TEMPLATE_VERSION ? "current" : "read-only";
 }
 
 export function evaluateTypeFit(signals: TypeFitResult["signals"]): TypeFitResult {
@@ -382,6 +483,7 @@ export function evaluateTypeFit(signals: TypeFitResult["signals"]): TypeFitResul
 }
 
 export function deriveTypeFitSignals(questions: QuestionDefinition[], answers: AnswerRecord[], baseScores: TypeScores, targetType: TypeId): TypeFitResult["signals"] {
+  validateAnswerRecords(questions, answers);
   const map = answerMap(answers);
   const fitItems = questions.filter((question) => question.targetType === targetType && question.metric === "fit" && map.has(question.id));
   const primaryFit = fitItems.find((question) => question.fitSignalRole === "primary") ?? fitItems[0];
@@ -405,40 +507,79 @@ export function deriveTypeFitSignals(questions: QuestionDefinition[], answers: A
 export function buildDiagnosisResult(args: {
   questions: QuestionDefinition[];
   answers: AnswerRecord[];
-  comparisons?: ComparisonScores[];
+  routingState: DiagnosisRoute;
   expressionIsGeneric: boolean;
   typeFitSignals?: TypeFitResult["signals"];
 }): DiagnosisResult {
-  const comparisons = args.comparisons ?? [];
+  const state = args.routingState;
+  const metadata: ResultMetadata = { questionBankVersion: state.questionBankVersion, scoringVersion: state.scoringVersion, engineVersion: state.engineVersion, reportTemplateVersion: state.reportTemplateVersion };
+  if (classifyResultVersion(metadata) !== "current") throw new Error("Historical version results are read-only and cannot be recalculated");
+  if (state.route === "pending-comparison") throw new Error("Cannot build a final DiagnosisResult while comparison is pending");
+  validateAnswerRecords(args.questions, args.answers);
+  const answeredIds = new Set(args.answers.map((answer) => answer.questionId));
+  const missingQuestionIds = state.questionIds.filter((questionId) => !answeredIds.has(questionId));
+  if (missingQuestionIds.length) throw new Error(`Final result requires all planned answers: ${missingQuestionIds.join(",")}`);
   const baseTypeScores = scoreBaseTypes(args.questions, args.answers);
-  const resolution = resolveType(baseTypeScores, comparisons);
-  const expression = scoreExpression(args.questions, args.answers, args.expressionIsGeneric);
-  const gap = scoreGap(args.questions, args.answers);
+  const computedResolution = resolveType(baseTypeScores, state.comparison);
+  if (state.route === "low-confidence" && state.typeResolution.kind !== "low-confidence") throw new Error("low-confidence route requires a low-confidence typeResolution");
+  if (state.route === "resolved" && state.typeResolution.kind !== "resolved") throw new Error("resolved route requires a resolved typeResolution");
+  if (!(state.routeLocked && state.route === "low-confidence") && JSON.stringify(computedResolution) !== JSON.stringify(state.typeResolution)) throw new Error("Routing typeResolution does not match the computed result");
+  const resolution = state.routeLocked && state.route === "low-confidence" ? state.typeResolution : computedResolution;
+  const confirmationIds = (kind: "expression" | "gap" | "utilization"): [string, string] | undefined => {
+    const matches = args.questions.filter((question) => {
+      if (!question.isConfirmation) return false;
+      if (kind === "expression") return question.metric === "expression";
+      if (kind === "gap") return question.metric === "gap";
+      return question.block === "utilization";
+    }).map((question) => question.id);
+    return matches.length === 2 ? [matches[0], matches[1]] : undefined;
+  };
+  const confirmationState = (kind: "expression" | "gap" | "utilization") => {
+    const activated = state.activatedConfirmations.includes(kind);
+    const skipped = state.skippedConfirmations.includes(kind) || state.confirmationSkipReasons[kind] === "budget_exceeded";
+    const ids = confirmationIds(kind);
+    if (activated && !ids) throw new Error(`${kind} confirmation is activated but confirmationQuestionIds are missing`);
+    if (activated && ids && !ids.every((questionId) => answeredIds.has(questionId))) throw new Error(`${kind} confirmation is activated but not fully answered`);
+    return { activated, skipped, ids, answered: Boolean(activated && ids?.every((questionId) => answeredIds.has(questionId))) };
+  };
+  const expressionConfirmation = confirmationState("expression");
+  const gapConfirmation = confirmationState("gap");
+  const utilizationConfirmation = confirmationState("utilization");
+  const baseExpression = scoreExpression(args.questions, args.answers, args.expressionIsGeneric);
+  const baseGap = scoreGap(args.questions, args.answers);
+  const utilizationNeedsConfirmation = needsUtilizationConfirmation(args.questions, args.answers);
+  if (expressionConfirmation.activated && !baseExpression.requiresConfirmation) throw new Error("Expression confirmation requires an expression mid-band result");
+  if (gapConfirmation.activated && baseGap.pattern !== "unclear") throw new Error("Gap confirmation requires an unclear gap direction");
+  if (utilizationConfirmation.activated && !utilizationNeedsConfirmation) throw new Error("Utilization confirmation requires a contradiction");
+  const expression = scoreExpression(args.questions, args.answers, args.expressionIsGeneric, { confirmationActivated: expressionConfirmation.activated, confirmationSkipped: expressionConfirmation.skipped, confirmationAnswered: expressionConfirmation.answered, confirmationQuestionIds: expressionConfirmation.ids });
+  const gap = scoreGap(args.questions, args.answers, { includeConfirmation: gapConfirmation.activated, confirmationSkipped: gapConfirmation.skipped, confirmationAnswered: gapConfirmation.answered, confirmationQuestionIds: gapConfirmation.ids });
   const defense = scoreDefense(args.questions, args.answers);
-  const utilization = scoreUtilization(args.questions, args.answers);
+  const utilization = scoreUtilization(args.questions, args.answers, { confirmationRequested: utilizationConfirmation.activated, confirmationSkipped: utilizationConfirmation.skipped, confirmationAnswered: utilizationConfirmation.answered, confirmationQuestionIds: utilizationConfirmation.ids });
   const reliability = detectReliability(args.questions, args.answers);
   const fitTarget = resolution.kind === "resolved" ? resolution.primary : resolution.candidates[0];
   const typeFit = evaluateTypeFit(args.typeFitSignals ?? deriveTypeFitSignals(args.questions, args.answers, baseTypeScores, fitTarget));
-  const majorReliability = reliabilityAssessment(reliability).overallWeakening;
   let typeConfidence: Confidence;
-  if (resolution.kind === "low-confidence" || typeFit.incompatible || majorReliability) typeConfidence = "low";
+  if (resolution.kind === "low-confidence" || typeFit.incompatible) typeConfidence = "low";
   else if (resolution.source === "comparison") typeConfidence = "medium";
   else typeConfidence = "high";
+  const confidence = applyReliabilityToConfidences({ type: typeConfidence, expression: expression.confidence, gap: gap.confidence, defense: defense.confidence, utilization: utilization.confidence }, reliability.issues);
   return {
-    engineVersion: ENGINE_VERSION,
-    scoringVersion: SCORING_VERSION,
-    questionBankVersion: QUESTION_BANK_VERSION,
+    engineVersion: state.engineVersion,
+    scoringVersion: state.scoringVersion,
+    questionBankVersion: state.questionBankVersion,
+    reportTemplateVersion: state.reportTemplateVersion,
+    metadata,
     resolution,
     baseTypeScores,
-    comparisonScores: comparisons,
+    comparison: state.comparison,
     expression,
     gap,
     defense,
     utilization,
     typeFit,
     reliability,
-    confidence: { type: typeConfidence, expression: expression.confidence, gap: gap.confidence, defense: defense.confidence, utilization: utilization.confidence },
-    route: resolution.kind === "resolved" ? "resolved" : "low-confidence",
+    confidence,
+    route: state.route,
     answeredQuestionIds: args.answers.map((answer) => answer.questionId),
   };
 }

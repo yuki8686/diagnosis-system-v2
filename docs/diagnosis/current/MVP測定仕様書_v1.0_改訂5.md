@@ -81,6 +81,10 @@
 
 確認質問は2フェーズ制とする。タイプ比較のみ共通12問直後にインライン発動する。出し方・使いこなし・ズレの確認は基本ブロック回答後の確認フェーズで、出し方→使いこなし→ズレの固定優先順位に従い、残り予算内で発動する。動的な優先順位変更はMVPでは行わない。
 
+比較状態は`initial`・`additional`・`completed`を明示する。`initial`は各ペアの`-1/-2`だけを受け付け、2対0ならその時点で`completed`とする。1対1の場合だけ`additional`へ進み、`-3/-4`を順に受け付ける。比較ペアは共通12問の上位2タイプと一致しなければならず、ペア外questionId・重複回答・5件以上の回答は拒否する。
+
+ルーティング状態にはセッションID・seed・4種version・route固定状態・タイプ判定・比較phase・出題済み／回答済みID・確認発動／非発動理由・構造質問数・条件付き予算・遷移履歴を保存する。low-confidenceへ確定したrouteは同一セッション内で固定し、後続計算でresolvedへ戻さない。
+
 **低確信度ルート(39〜45問):**
 共通12 → [比較0または4] → 汎用出し方4 → 防衛反応7 → ズレ(汎用5ペア)10 → 使いこなし(上位2タイプ各3問)6
 - 比較なし:12+4+7+10+6=39問
@@ -158,6 +162,8 @@ typeConfidenceの仮ルール:
 | 類似質問不一致 | 確認質問と元回答の不一致 | 主信号 |
 
 単一フラグだけで結果全体を弱めない。複数フラグの重複、または該当ブロック内の重大な矛盾がある場合に、そのブロックの表現を弱める。全フラグは個別にログ保存する。
+
+各信頼性フラグは`affectedBlocks`・severity・根拠questionIdを持つissueとしても保存する。位置連打はinfo扱いとし、単独ではconfidenceを変更しない。同一ブロックで異なるmajor信号が2種以上重なった場合だけ、そのブロックのconfidenceをlowへ下げる。タイプ以外のブロックの問題だけでtypeConfidenceを下げない。
 
 ## 9. ズレ3指標
 
@@ -316,6 +322,8 @@ C = (active == 0) ? null : max(neg, pos) / active   # 一貫性
 
 ### バージョン管理
 全設問にquestionIdとversion。スコアリング・テンプレート・エンジンにも独立version。結果レコードに使用全versionを記録し、分析は同一version内で行う。設問差し替えはA/B並行配信を基本とする。
+
+実装上の必須metadataは`questionBankVersion`・`scoringVersion`・`engineVersion`・`reportTemplateVersion`の4種とする。AnswerRecordのquestionVersionが質問定義のversionと一致しない場合は、questionId・回答version・期待versionを含むvalidation errorとして計算前に拒否する。旧version結果は表示用のread-onlyとして扱い、現行ロジックで黙って再計算しない。
 
 ### 中断・再開
 MVP:localStorage保存+再開ボタン+進捗復元(保存期限14日)。次段階:メール/LINE再開リンク。

@@ -30,6 +30,10 @@ src/lib/diagnosis-v1/
 6. 文章テンプレートに恋愛・仕事などの領域断定を混ぜない。
 7. 比較質問のみ共通12問直後にインライン発動し、出し方・使いこなし・ズレ確認は基本ブロック後の確認フェーズで固定優先順位に従う。
 8. 共通タイプ・比較・防衛の選択肢順はセッションseedで再現し、リッカート1〜5は固定順とする。
+9. 比較は`initial`・`additional`・`completed`を明示し、初回1対1以外から追加2問へ進めない。
+10. low-confidenceへ入ったrouteはセッション内で固定し、遷移理由・確認発動理由・非発動理由を保存する。
+11. `questionBankVersion`・`scoringVersion`・`engineVersion`・`reportTemplateVersion`を状態と結果へ保存し、異なるquestionVersionの回答は計算前に拒否する。
+12. 信頼性フラグは対象ブロックへ紐付け、同一ブロックでmajor信号が複数重なった場合だけ当該confidenceを下げる。
 
 ## 実装順
 
@@ -37,9 +41,10 @@ src/lib/diagnosis-v1/
 2. `validateQuestionBank`をCIで実行する。
 3. `scoreBaseTypes`からブロックごとの単体テストを作る。
 4. 既存3回答パターンA/B/Cをfixture化する。
-5. 無料レポート生成を実装する。
-6. 有料レポートの品質ゲートを実装する。
-7. localStorage再開とログ保存を接続する。
+5. 比較・ルーティング・確認後スコアを`buildDiagnosisResult`まで統合する。
+6. 無料レポート生成を実装する。
+7. 有料レポートの品質ゲートを実装する。
+8. localStorage再開とログ保存を接続する。
 
 ## 有料品質ゲート
 

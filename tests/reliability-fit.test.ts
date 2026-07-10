@@ -34,7 +34,12 @@ assert.equal(detectReliability(utilizationQuestions, mismatchAnswers).similarQue
 const positionOnly = detectReliability(questionBank.commonType, commonVaried.map((answer) => ({ ...answer, displayedPosition: 0 })));
 assert.equal(reliabilityAssessment(positionOnly).overallWeakening, false);
 const multipleMain = { ...positionOnly, fastResponse: true, semanticMonotony: true };
-assert.equal(reliabilityAssessment(multipleMain).overallWeakening, true);
+const multipleTypeIssues = { ...multipleMain, issues: [
+  { flag: "fastResponse" as const, affectedBlocks: ["type" as const], severity: "major" as const, sourceQuestionIds: ["C01"] },
+  { flag: "semanticMonotony" as const, affectedBlocks: ["type" as const], severity: "major" as const, sourceQuestionIds: ["C01"] },
+] };
+assert.equal(reliabilityAssessment(multipleTypeIssues).overallWeakening, true);
+assert.equal(reliabilityAssessment(multipleTypeIssues).weakenedBlocks.includes("type"), true);
 
 const fitQuestion = questionBank.byType.win.expression.find((question) => question.id === "DS-FIT");
 assert.ok(fitQuestion);

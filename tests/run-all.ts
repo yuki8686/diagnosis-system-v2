@@ -1,7 +1,11 @@
 import "./question-bank.test";
 import "./scoring.test";
+import "./comparison-contract.test";
 import "./routing.test";
+import "./state-contract.test";
 import "./gap-utilization.test";
 import "./reliability-fit.test";
+import "./validation-version-reliability.test";
 import "./defense.test";
 import "./fixtures.test";
+import "./result-integration.test";

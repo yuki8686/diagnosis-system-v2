@@ -1,6 +1,6 @@
-import { LIMITS } from "./constants";
+import { ENGINE_VERSION, LIMITS, QUESTION_BANK_VERSION, REPORT_TEMPLATE_VERSION, SCORING_VERSION } from "./constants";
 import { questionBank } from "./data/question-bank";
-import type { ChoiceOption, ComparisonResolution, ConfirmationKind, DiagnosisRoute, DiagnosisStep, QuestionDefinition, TypeResolution } from "./types";
+import type { ChoiceOption, ComparisonResolution, ConfirmationActivationReason, ConfirmationKind, ConfirmationSkipReason, DiagnosisRoute, DiagnosisRouteKind, DiagnosisStep, QuestionDefinition, TypeResolution } from "./types";
 
 export interface RouteConfirmationNeeds {
   expression?: boolean;
@@ -9,11 +9,17 @@ export interface RouteConfirmationNeeds {
 }
 
 export interface BuildDiagnosisRouteInput {
+  sessionId: string;
   resolution: TypeResolution;
   comparison?: ComparisonResolution;
   confirmationNeeds: RouteConfirmationNeeds;
   answeredQuestionIds?: string[];
+  askedQuestionIds?: string[];
   sessionSeed: string;
+  previousState?: DiagnosisRoute;
+  transitionSequence: number;
+  transitionReason?: string;
+  transitionTriggeringQuestionIds?: string[];
 }
 
 const ids = (questions: QuestionDefinition[]): string[] => questions.map((question) => question.id);
@@ -64,38 +70,93 @@ function stepFor(questionId: string | undefined, activatedQuestionIds: Set<strin
 }
 
 export function buildDiagnosisRoute(input: BuildDiagnosisRouteInput): DiagnosisRoute {
-  const comparison = comparisonIds(input.comparison);
+  if (!input.sessionId?.trim()) throw new Error("sessionId is required");
+  if (!input.sessionSeed?.trim()) throw new Error("sessionSeed is required");
+  if (!Number.isInteger(input.transitionSequence) || input.transitionSequence < 1) throw new Error("transitionSequence must be a positive integer");
+  if (input.previousState && (input.previousState.sessionId !== input.sessionId || input.previousState.sessionSeed !== input.sessionSeed)) throw new Error("Previous routing state belongs to a different session");
+  if (input.previousState && (input.previousState.questionBankVersion !== QUESTION_BANK_VERSION || input.previousState.scoringVersion !== SCORING_VERSION || input.previousState.engineVersion !== ENGINE_VERSION || input.previousState.reportTemplateVersion !== REPORT_TEMPLATE_VERSION)) throw new Error("Historical routing state version is read-only");
+  const lockedRoute = input.previousState?.routeLocked === true;
+  const effectiveResolution = lockedRoute ? input.previousState!.typeResolution : input.resolution;
+  const effectiveComparison = lockedRoute ? input.previousState!.comparison : input.comparison;
+  const comparison = comparisonIds(effectiveComparison);
   const answeredQuestionIds = [...(input.answeredQuestionIds ?? [])];
-  const activatedConfirmations: ConfirmationKind[] = [];
+  const askedQuestionIds = [...(input.askedQuestionIds ?? input.previousState?.askedQuestionIds ?? [])];
+  const activatedConfirmations: ConfirmationKind[] = [...(input.previousState?.activatedConfirmations ?? [])];
   const skippedConfirmations: ConfirmationKind[] = [];
+  const confirmationActivationReasons: DiagnosisRoute["confirmationActivationReasons"] = { ...(input.previousState?.confirmationActivationReasons ?? {}) };
+  const confirmationSkipReasons: DiagnosisRoute["confirmationSkipReasons"] = {};
   const confirmationConfidenceHints: Partial<Record<ConfirmationKind, "low">> = {};
   const confirmationQuestionIds: string[] = [];
   let questionIds: string[];
   let confirmationCandidates: Array<[ConfirmationKind, string[]]>;
+  let targetRoute: DiagnosisRouteKind = effectiveComparison?.status === "needs_more" ? "pending-comparison" : effectiveResolution.kind === "resolved" ? "resolved" : "low-confidence";
+  if (lockedRoute) targetRoute = input.previousState!.route;
 
-  if (input.comparison?.status === "needs_more") {
+  const transitionHistory = [...(input.previousState?.transitionHistory ?? [])];
+  const previousRoute = input.previousState?.route ?? "uninitialized";
+  if (previousRoute !== targetRoute) {
+    transitionHistory.push({ from: previousRoute, to: targetRoute, reason: input.transitionReason ?? (lockedRoute ? "route_locked" : "resolution_updated"), sequence: input.transitionSequence, triggeringQuestionIds: [...(input.transitionTriggeringQuestionIds ?? [])] });
+  }
+  const routeLocked = lockedRoute || targetRoute !== "pending-comparison";
+  const routeLockedAt = input.previousState?.routeLockedAt ?? (routeLocked ? input.transitionSequence : undefined);
+
+  const finalize = (basePlannedCount: number, structuralComparisonCount: number, consumedConditionalCount: number): Omit<DiagnosisRoute, "currentStep" | "nextQuestionId"> => {
+    if (new Set(questionIds).size !== questionIds.length) throw new Error("Diagnosis route contains duplicate question ids");
+    if (new Set(answeredQuestionIds).size !== answeredQuestionIds.length) throw new Error("answeredQuestionIds contains duplicates");
+    if (new Set(askedQuestionIds).size !== askedQuestionIds.length) throw new Error("askedQuestionIds contains duplicates");
+    const remainingOperationalBudget = Math.max(0, LIMITS.operationalMaximumQuestions - questionIds.length);
+    const routeConfirmationCap = targetRoute === "low-confidence" ? 2 : 6;
+    const remainingConditionalBudget = Math.max(0, Math.min(routeConfirmationCap - consumedConditionalCount, LIMITS.operationalMaximumQuestions - basePlannedCount - structuralComparisonCount - consumedConditionalCount));
+    return {
+      sessionId: input.sessionId,
+      sessionSeed: input.sessionSeed,
+      questionBankVersion: QUESTION_BANK_VERSION,
+      scoringVersion: SCORING_VERSION,
+      engineVersion: ENGINE_VERSION,
+      reportTemplateVersion: REPORT_TEMPLATE_VERSION,
+      route: targetRoute,
+      routeLocked,
+      routeLockedAt,
+      typeResolution: effectiveResolution,
+      comparisonPhase: effectiveComparison?.phase,
+      expectedComparisonPair: effectiveComparison?.pair,
+      questionIds,
+      askedQuestionIds,
+      answeredQuestionIds,
+      provisionalType: effectiveResolution.kind === "resolved" ? effectiveResolution.primary : effectiveResolution.candidates[0],
+      comparison: effectiveComparison,
+      activatedConfirmations,
+      confirmationActivationReasons,
+      skippedConfirmations,
+      confirmationSkipReasons,
+      confirmationConfidenceHints,
+      operationalLimit: 47,
+      hardLimit: 48,
+      basePlannedCount,
+      structuralComparisonCount,
+      consumedConditionalCount,
+      remainingOperationalBudget,
+      remainingConditionalBudget,
+      remainingAdditionalBudget: remainingConditionalBudget,
+      limits: { operationalMaximum: 47, hardMaximum: 48 },
+      transitionHistory,
+    };
+  };
+
+  if (targetRoute === "pending-comparison") {
     questionIds = [...ids(questionBank.commonType), ...comparison];
     const answered = new Set(answeredQuestionIds);
     const nextQuestionId = questionIds.find((questionId) => !answered.has(questionId));
+    const base = finalize(39, comparison.length, 0);
     return {
-      route: "pending-comparison",
+      ...base,
       currentStep: stepFor(nextQuestionId, new Set()),
-      questionIds,
-      answeredQuestionIds,
       nextQuestionId,
-      provisionalType: input.resolution.kind === "resolved" ? input.resolution.primary : input.resolution.candidates[0],
-      comparison: input.comparison,
-      activatedConfirmations,
-      skippedConfirmations,
-      confirmationConfidenceHints,
-      remainingAdditionalBudget: LIMITS.operationalMaximumQuestions - questionIds.length,
-      sessionSeed: input.sessionSeed,
-      limits: { operationalMaximum: 47, hardMaximum: 48 },
     };
   }
 
-  if (input.resolution.kind === "resolved") {
-    const section = questionBank.byType[input.resolution.primary];
+  if (effectiveResolution.kind === "resolved") {
+    const section = questionBank.byType[effectiveResolution.primary];
     questionIds = [
       ...ids(questionBank.commonType),
       ...comparison,
@@ -116,19 +177,42 @@ export function buildDiagnosisRoute(input: BuildDiagnosisRouteInput): DiagnosisR
       ...ids(questionBank.genericExpression),
       ...ids(questionBank.defense),
       ...ids(baseItems(questionBank.genericGap)),
-      ...lowConfidenceUtilization(input.resolution),
+      ...lowConfidenceUtilization(effectiveResolution),
     ];
     confirmationCandidates = [["gap", ids(confirmationItems(questionBank.genericGap))]];
   }
 
-  for (const [kind, candidateIds] of confirmationCandidates) {
-    if (!input.confirmationNeeds[kind]) continue;
+  const reasonFor: Record<ConfirmationKind, ConfirmationActivationReason> = { expression: "expression_mid_band", utilization: "utilization_contradiction", gap: "gap_direction_unclear" };
+  const defaultSkip: Record<ConfirmationKind, ConfirmationSkipReason> = { expression: "not_applicable", utilization: "no_contradiction", gap: "not_applicable" };
+  const candidateMap = new Map(confirmationCandidates);
+  for (const kind of activatedConfirmations) {
+    const candidateIds = candidateMap.get(kind);
+    if (candidateIds) confirmationQuestionIds.push(...candidateIds);
+  }
+  for (const kind of ["expression", "utilization", "gap"] as const) {
+    const candidateIds = candidateMap.get(kind);
+    if (activatedConfirmations.includes(kind)) {
+      if (input.confirmationNeeds[kind]) confirmationSkipReasons[kind] = "already_activated";
+      continue;
+    }
+    if (!input.confirmationNeeds[kind]) {
+      confirmationSkipReasons[kind] = defaultSkip[kind];
+      continue;
+    }
+    if (!candidateIds) {
+      skippedConfirmations.push(kind);
+      confirmationSkipReasons[kind] = "route_disallowed";
+      confirmationConfidenceHints[kind] = "low";
+      continue;
+    }
     const nextSize = questionIds.length + confirmationQuestionIds.length + candidateIds.length;
     if (candidateIds.length === 2 && nextSize <= LIMITS.hardMaximumQuestions && nextSize <= LIMITS.operationalMaximumQuestions) {
       activatedConfirmations.push(kind);
+      confirmationActivationReasons[kind] = reasonFor[kind];
       confirmationQuestionIds.push(...candidateIds);
     } else {
       skippedConfirmations.push(kind);
+      confirmationSkipReasons[kind] = "budget_exceeded";
       confirmationConfidenceHints[kind] = "low";
     }
   }
@@ -136,23 +220,12 @@ export function buildDiagnosisRoute(input: BuildDiagnosisRouteInput): DiagnosisR
   if (questionIds.length > LIMITS.operationalMaximumQuestions || questionIds.length > LIMITS.hardMaximumQuestions) throw new Error("Diagnosis route exceeds question limits");
   const answered = new Set(answeredQuestionIds);
   const nextQuestionId = questionIds.find((questionId) => !answered.has(questionId));
-  const routeConfirmationCap = input.resolution.kind === "resolved" ? 6 : 2;
-  const remaining = Math.min(LIMITS.operationalMaximumQuestions - questionIds.length, routeConfirmationCap - confirmationQuestionIds.length);
   const activatedSet = new Set(confirmationQuestionIds);
+  const base = finalize(39, comparison.length, confirmationQuestionIds.length);
   return {
-    route: input.resolution.kind === "resolved" ? "resolved" : "low-confidence",
+    ...base,
     currentStep: stepFor(nextQuestionId, activatedSet),
-    questionIds,
-    answeredQuestionIds,
     nextQuestionId,
-    provisionalType: input.resolution.kind === "resolved" ? input.resolution.primary : input.resolution.candidates[0],
-    comparison: input.comparison,
-    activatedConfirmations,
-    skippedConfirmations,
-    confirmationConfidenceHints,
-    remainingAdditionalBudget: remaining >= 2 ? remaining : 0,
-    sessionSeed: input.sessionSeed,
-    limits: { operationalMaximum: 47, hardMaximum: 48 },
   };
 }
 
@@ -175,8 +248,9 @@ function randomFromSeed(seed: number): () => number {
   };
 }
 
-export function orderQuestionOptions(question: QuestionDefinition, sessionSeed: string): ChoiceOption[] {
-  if (question.format === "likert-5") return [...question.options];
+export function orderQuestionOptions(question: QuestionDefinition, sessionSeed?: string): ChoiceOption[] {
+  if (!sessionSeed?.trim()) throw new Error("A non-empty session seed is required");
+  if (question.format === "likert-5" || !["common-type", "type-comparison", "defense"].includes(question.block)) return [...question.options];
   const ordered = [...question.options];
   const random = randomFromSeed(seedHash(`${sessionSeed}:${question.id}`));
   for (let index = ordered.length - 1; index > 0; index -= 1) {

@@ -23,6 +23,7 @@ export type QuestionBlock =
   | "confirmation";
 
 export type QuestionFormat = "single-choice" | "likert-5";
+export type QuestionId = string;
 
 export interface ChoiceOption {
   id: string;
@@ -56,7 +57,7 @@ export interface AnswerRecord {
   numericValue?: number;
   displayedPosition?: number;
   answeredAt: string;
-  durationMs: number;
+  durationMs?: number;
 }
 
 export interface TypeScores {
@@ -66,10 +67,14 @@ export interface TypeScores {
   axis: number;
 }
 
-export interface ComparisonScores {
-  pair: [TypeId, TypeId];
-  answers: TypeId[];
-  winner?: TypeId;
+export type ComparisonPhase = "initial" | "additional" | "completed";
+
+export interface ComparisonInput {
+  expectedPair: [TypeId, TypeId];
+  initialQuestionIds: [QuestionId, QuestionId];
+  additionalQuestionIds: [QuestionId, QuestionId];
+  answers: AnswerRecord[];
+  phase: ComparisonPhase;
 }
 
 export interface ComparisonRawAnswer {
@@ -79,15 +84,17 @@ export interface ComparisonRawAnswer {
 
 interface ComparisonResolutionBase {
   pair: [TypeId, TypeId];
+  initialQuestionIds: [QuestionId, QuestionId];
+  additionalQuestionIds: [QuestionId, QuestionId];
   counts: TypeScores;
   rawAnswers: ComparisonRawAnswer[];
   nextQuestionIds: string[];
 }
 
 export type ComparisonResolution =
-  | (ComparisonResolutionBase & { status: "resolved"; winner: TypeId })
-  | (ComparisonResolutionBase & { status: "needs_more" })
-  | (ComparisonResolutionBase & { status: "low_confidence" });
+  | (ComparisonResolutionBase & { status: "resolved"; phase: "completed"; winner: TypeId })
+  | (ComparisonResolutionBase & { status: "needs_more"; phase: "initial" | "additional" })
+  | (ComparisonResolutionBase & { status: "low_confidence"; phase: "completed" });
 
 export type TypeResolution =
   | { kind: "resolved"; primary: TypeId; secondary?: TypeId; source: "base" | "comparison" }
@@ -179,12 +186,24 @@ export interface ReliabilityFlags {
   likertSameValueStreak: boolean;
   reverseContradiction: boolean;
   similarQuestionMismatch: boolean;
+  issues: ReliabilityIssue[];
+}
+
+export type DiagnosisBlock = "type" | "expression" | "gap" | "defense" | "utilization";
+export type ReliabilityFlag = "fastResponse" | "positionStreak" | "semanticMonotony" | "likertSameValueStreak" | "reverseContradiction" | "similarQuestionMismatch";
+
+export interface ReliabilityIssue {
+  flag: ReliabilityFlag;
+  affectedBlocks: DiagnosisBlock[];
+  severity: "info" | "warning" | "major";
+  sourceQuestionIds: string[];
 }
 
 export interface ReliabilityAssessment {
   mainSignalCount: number;
   overallWeakening: boolean;
   blockContradictions: Array<"reverseContradiction" | "similarQuestionMismatch">;
+  weakenedBlocks: DiagnosisBlock[];
 }
 
 export interface TypeFitSignals {
@@ -208,32 +227,73 @@ export interface BlockConfidences {
   utilization: Confidence;
 }
 
+export interface ResultMetadata {
+  questionBankVersion: string;
+  scoringVersion: string;
+  engineVersion: string;
+  reportTemplateVersion: string;
+}
+
 export type ConfirmationKind = "expression" | "utilization" | "gap";
 export type DiagnosisStep = "common-type" | "comparison" | "expression" | "defense" | "gap" | "utilization" | "confirmation" | "complete";
+export type DiagnosisRouteKind = "pending-comparison" | "resolved" | "low-confidence";
+export type ConfirmationActivationReason = "expression_mid_band" | "utilization_contradiction" | "gap_direction_unclear";
+export type ConfirmationSkipReason = "not_applicable" | "no_contradiction" | "budget_exceeded" | "already_activated" | "route_disallowed";
+
+export interface RouteTransition {
+  from: DiagnosisRouteKind | "uninitialized";
+  to: DiagnosisRouteKind;
+  reason: string;
+  sequence: number;
+  triggeringQuestionIds: string[];
+}
 
 export interface DiagnosisRoute {
-  route: "pending-comparison" | "resolved" | "low-confidence";
+  sessionId: string;
+  sessionSeed: string;
+  questionBankVersion: string;
+  scoringVersion: string;
+  engineVersion: string;
+  reportTemplateVersion: string;
+  route: DiagnosisRouteKind;
+  routeLocked: boolean;
+  routeLockedAt?: number;
+  typeResolution: TypeResolution;
+  comparisonPhase?: ComparisonPhase;
+  expectedComparisonPair?: [TypeId, TypeId];
   currentStep: DiagnosisStep;
   questionIds: string[];
+  askedQuestionIds: string[];
   answeredQuestionIds: string[];
   nextQuestionId?: string;
   provisionalType: TypeId;
   comparison?: ComparisonResolution;
   activatedConfirmations: ConfirmationKind[];
+  confirmationActivationReasons: Partial<Record<ConfirmationKind, ConfirmationActivationReason>>;
   skippedConfirmations: ConfirmationKind[];
+  confirmationSkipReasons: Partial<Record<ConfirmationKind, ConfirmationSkipReason>>;
   confirmationConfidenceHints: Partial<Record<ConfirmationKind, "low">>;
+  operationalLimit: 47;
+  hardLimit: 48;
+  basePlannedCount: number;
+  structuralComparisonCount: number;
+  consumedConditionalCount: number;
+  remainingOperationalBudget: number;
+  remainingConditionalBudget: number;
   remainingAdditionalBudget: number;
-  sessionSeed: string;
   limits: { operationalMaximum: 47; hardMaximum: 48 };
+  transitionHistory: RouteTransition[];
 }
 
 export interface DiagnosisResult {
   engineVersion: string;
   scoringVersion: string;
   questionBankVersion: string;
+  reportTemplateVersion: string;
+  metadata: ResultMetadata;
   resolution: TypeResolution;
   baseTypeScores: TypeScores;
-  comparisonScores: ComparisonScores[];
+  comparison?: ComparisonResolution;
   expression: ExpressionResult;
   gap: GapResult;
   defense: DefenseResult;
