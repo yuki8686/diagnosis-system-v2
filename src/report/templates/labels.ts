@@ -1,9 +1,9 @@
 import { EXPRESSION_LABELS, TYPE_LABELS, TYPE_PURPOSES } from "../../constants";
-import type { ExpressionId, TypeId } from "../../types";
+import type { Confidence, ExpressionId, TypeId } from "../../types";
 
 export type LabelTemplateKey = `${TypeId}:${ExpressionId}`;
 
-export interface LabelReportTemplate {
+interface BaseLabelReportTemplate {
   headline: string;
   core: string;
   expression: string;
@@ -16,7 +16,17 @@ export interface LabelReportTemplate {
   observation: string;
 }
 
-export const LABEL_TEMPLATES: Record<LabelTemplateKey, LabelReportTemplate> = {
+export interface LabelReportTemplate extends BaseLabelReportTemplate {
+  coreFocus: string;
+  protectedFocus: string;
+  relationshipPossibility: string;
+  workPossibility: string;
+}
+
+export type ConfidenceCopy = Record<Confidence, string>;
+export type ConfidenceCopyField = "core" | "expression" | "protects" | "impression" | "misunderstanding" | "strength" | "friction" | "relationshipPossibility" | "workPossibility";
+
+const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
   "win:outward": {
     headline: "勝ち筋が見えると、場を動かさずにいられない人",
     core: "対等以上に扱われることや、自分の貢献が結果として認められることへ反応しやすい傾向があります。",
@@ -161,6 +171,77 @@ export const LABEL_TEMPLATES: Record<LabelTemplateKey, LabelReportTemplate> = {
     action: "次に基準を示すとき、譲れない点と調整できる点を一つずつ伝えてください。",
     observation: "理想を守りながら、現実的な合意へ近づけたかを観察してください。",
   },
+};
+
+const TYPE_FOCUS: Record<TypeId, { coreFocus: string; protectedFocus: string }> = {
+  win: { coreFocus: "結果と貢献が正当に扱われること", protectedFocus: "自分で流れを動かせる立場" },
+  connect: { coreFocus: "関係の温度と反応が行き来すること", protectedFocus: "安心して人とつながれる距離" },
+  analyze: { coreFocus: "情報や構造を理解できること", protectedFocus: "自分のペースで考えられる余地" },
+  axis: { coreFocus: "意味や基準と行動が一致すること", protectedFocus: "大切な理想を現実へ残せること" },
+};
+
+const DOMAIN_FOCUS: Record<LabelTemplateKey, { relationshipPossibility: string; workPossibility: string }> = {
+  "win:outward": { relationshipPossibility: "関係場面では、結論を前へ進める働きかけが頼もしさとして伝わる可能性があります。", workPossibility: "仕事場面では、停滞時に決断を引き受ける力が表れる可能性があります。" },
+  "win:inward": { relationshipPossibility: "関係場面では、表に出さない熱量が相手からは落ち着きとして見える可能性があります。", workPossibility: "仕事場面では、狙いを内側で練り、必要な局面で結果として示す力が表れる可能性があります。" },
+  "win:adaptive": { relationshipPossibility: "関係場面では、相手と状況を見て主導する量を変える可能性があります。", workPossibility: "仕事場面では、動く局面と待つ局面を選び、熱量を配分する力が表れる可能性があります。" },
+  "connect:outward": { relationshipPossibility: "関係場面では、自分から反応を返し、交流の入口を作る可能性があります。", workPossibility: "仕事場面では、周囲の反応を拾い、協力しやすい温度を作る力が表れる可能性があります。" },
+  "connect:inward": { relationshipPossibility: "関係場面では、相手の余地を尊重しながら静かに関わりを保つ可能性があります。", workPossibility: "仕事場面では、周囲の状態を見ながら必要な支えを目立たない形で続ける可能性があります。" },
+  "connect:adaptive": { relationshipPossibility: "関係場面では、相手との距離を見て近づき方を調整する可能性があります。", workPossibility: "仕事場面では、相手の反応に合わせて声のかけ方や協力の量を変える可能性があります。" },
+  "analyze:outward": { relationshipPossibility: "関係場面では、疑問を言葉にして認識のずれを整える可能性があります。", workPossibility: "仕事場面では、複雑な情報を整理し、判断できる形へ変える力が表れる可能性があります。" },
+  "analyze:inward": { relationshipPossibility: "関係場面では、すぐに答えず、一度考えてから丁寧に応じる可能性があります。", workPossibility: "仕事場面では、表に出る前に情報を深く検討し、構造を見つける力が表れる可能性があります。" },
+  "analyze:adaptive": { relationshipPossibility: "関係場面では、質問する時と静かに観察する時を選び分ける可能性があります。", workPossibility: "仕事場面では、情報量と状況を見て、確認と持ち帰りを切り替える可能性があります。" },
+  "axis:outward": { relationshipPossibility: "関係場面では、大切にしたい基準を言葉にし、より良い形を提案する可能性があります。", workPossibility: "仕事場面では、曖昧な基準を言語化し、改善の方向を示す力が表れる可能性があります。" },
+  "axis:inward": { relationshipPossibility: "関係場面では、大切な基準を内側に保ちながら、相手との調和を優先する可能性があります。", workPossibility: "仕事場面では、表立って主張せずとも、意味や品質の基準を長く保つ可能性があります。" },
+  "axis:adaptive": { relationshipPossibility: "関係場面では、重要な価値だけを選んで伝え、それ以外は柔軟に調整する可能性があります。", workPossibility: "仕事場面では、守る基準と調整できる部分を分け、理想を現実へつなぐ可能性があります。" },
+};
+
+export const LABEL_TEMPLATES = Object.fromEntries(
+  (Object.keys(LABEL_TEMPLATE_COPY) as LabelTemplateKey[]).map((key) => {
+    const type = key.split(":")[0] as TypeId;
+    return [key, { ...LABEL_TEMPLATE_COPY[key], ...TYPE_FOCUS[type], ...DOMAIN_FOCUS[key] }];
+  }),
+) as Record<LabelTemplateKey, LabelReportTemplate>;
+
+function mediumCopy(text: string): string {
+  return text
+    .replace(/(.+)ことが強みです。$/, "$1傾向が比較的見られました。")
+    .replace(/見られやすいでしょう。$/, "見られやすい傾向が比較的示されています。")
+    .replace(/傾向があります。$/, "傾向が比較的見られました。")
+    .replace(/出し方です。$/, "出し方が比較的見られました。")
+    .replace(/人です。$/, "特徴が比較的見られました。")
+    .replace(/ことがあります。$/, "傾向が比較的見られました。")
+    .replace(/可能性があります。$/, "可能性が考えられます。");
+}
+
+function lowCopy(text: string): string {
+  return text
+    .replace(/(.+)ことが強みです。$/, "場面によって、$1力が表れる可能性があります。")
+    .replace(/見られやすいでしょう。$/, "見られやすい可能性があります。")
+    .replace(/傾向があります。$/, "傾向が場面によって表れる可能性があります。")
+    .replace(/出し方です。$/, "出し方になる可能性があります。")
+    .replace(/人です。$/, "特徴が表れる可能性があります。")
+    .replace(/ことがあります。$/, "ことがあるかもしれません。")
+    .replace(/です。$/, "可能性があります。")
+    .replace(/でしょう。$/, "可能性があります。");
+}
+
+export function confidenceCopies(text: string): ConfidenceCopy {
+  return {
+    high: text,
+    medium: `今回の回答では、${mediumCopy(text)}`,
+    low: `今回確認できた範囲では、${lowCopy(text)}`,
+  };
+}
+
+export function renderLabelCopy(template: LabelReportTemplate, field: ConfidenceCopyField, confidence: Confidence): string {
+  return confidenceCopies(template[field])[confidence];
+}
+
+export const ANSWER_PUNCH_LEADS: Record<TypeId, string> = {
+  win: "結果だけでなく",
+  connect: "目の前の選択だけでなく",
+  analyze: "結論だけでなく",
+  axis: "その場を収めることだけでなく",
 };
 
 export function labelTemplate(type: TypeId, expression: ExpressionId): LabelReportTemplate {

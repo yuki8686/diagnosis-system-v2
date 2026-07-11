@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx tests/run-all.ts"
+    "test": "tsx tests/run-all.ts",
+    "report:samples": "tsx scripts/generate-report-samples.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

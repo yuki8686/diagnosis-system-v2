@@ -6,6 +6,7 @@ import {
   generatePaidReport,
   LABEL_TEMPLATES,
   PaidReportQualityError,
+  validatePaidReport,
 } from "../src/report";
 import type { FreeReport, ReportSection } from "../src/types";
 import { makeReportInput } from "./report-test-helpers";
@@ -35,6 +36,58 @@ for (const type of TYPE_IDS) {
 const adaptive = generateFreeReport(makeReportInput({ expression: "adaptive" }));
 assert.doesNotMatch(body(adaptive.sections), /確認されたときに用いる|欲望が弱い|隠している/);
 assert.match(body(adaptive.sections), /場面|相手/);
+
+const lowWordingInput = makeReportInput({ confidences: { type: "low", expression: "low", gap: "low", defense: "low", utilization: "low" }, defenseMode: "low" });
+const lowWordingPaid = generatePaidReport(lowWordingInput);
+const lowStrength = lowWordingPaid.sections.find((section) => section.id === "strengths")!.paragraphs.find((paragraph) => paragraph.id === "paid-strength")!;
+const lowImpression = lowWordingPaid.sections.find((section) => section.id === "strengths")!.paragraphs.find((paragraph) => paragraph.id === "paid-impression")!;
+for (const paragraph of [lowStrength, lowImpression]) {
+  assert.equal(paragraph.evidence.wordingStrength, "soft");
+  assert.match(paragraph.text, /可能性|かもしれません|今回確認できた範囲/);
+  assert.doesNotMatch(paragraph.text, /(?:人|強み|特徴)です。$/);
+}
+const mediumWordingPaid = generatePaidReport(makeReportInput({ confidences: { type: "medium", expression: "medium" } }));
+assert.notEqual(mediumWordingPaid.sections.find((section) => section.id === "strengths")!.paragraphs.map((paragraph) => paragraph.text).join(" "), lowWordingPaid.sections.find((section) => section.id === "strengths")!.paragraphs.map((paragraph) => paragraph.text).join(" "));
+
+const selfReportedDowngrade = structuredClone(generatePaidReport(makeReportInput()));
+const tamperedParagraph = selfReportedDowngrade.sections.find((section) => section.id === "core_desire")!.paragraphs[0];
+tamperedParagraph.evidence.wordingStrength = "soft";
+tamperedParagraph.evidence.sourceScores = { ...tamperedParagraph.evidence.sourceScores, reliabilityDowngraded: true };
+const selfReportedQuality = validatePaidReport(selfReportedDowngrade);
+assert.equal(selfReportedQuality.passed, false);
+assert.ok(selfReportedQuality.issues.some((issue) => issue.code === "wording_mismatch"));
+
+for (const type of TYPE_IDS) for (const expression of EXPRESSION_IDS) {
+  const template = LABEL_TEMPLATES[`${type}:${expression}`];
+  assert.ok(template.coreFocus.trim());
+  assert.ok(template.protectedFocus.trim());
+}
+const lowComparisonText = body(generatePaidReport(makeReportInput({ route: "low-confidence" })).sections);
+assert.doesNotMatch(lowComparisonText, /「[^」]*傾向があります。」へ/);
+
+const punchLeads = new Map(TYPE_IDS.map((type) => {
+  const report = generateFreeReport(makeReportInput({ type }));
+  return [type, report.sections.flatMap((section) => section.paragraphs).find((paragraph) => paragraph.id === "free-answer-punch")!.text] as const;
+}));
+assert.match(punchLeads.get("win")!, /結果だけでなく/);
+assert.match(punchLeads.get("connect")!, /目の前の選択だけでなく/);
+assert.match(punchLeads.get("analyze")!, /結論だけでなく/);
+assert.match(punchLeads.get("axis")!, /その場を収めることだけでなく/);
+const lowPunch = generateFreeReport(makeReportInput({ route: "low-confidence" })).sections.flatMap((section) => section.paragraphs).find((paragraph) => paragraph.id === "free-answer-punch")!.text;
+assert.match(lowPunch, /その選択そのものだけでなく/);
+assert.doesNotMatch(lowPunch, /結果だけでなく|結論だけでなく/);
+
+for (const type of TYPE_IDS) {
+  const domainCopies = EXPRESSION_IDS.map((expression) => {
+    const report = generatePaidReport(makeReportInput({ type, expression }));
+    return report.sections.filter((section) => section.id === "relationships" || section.id === "work").map((section) => section.paragraphs.map((paragraph) => paragraph.text).join(" ")).join("\n");
+  });
+  assert.equal(new Set(domainCopies).size, 3, `${type}: domain copies`);
+}
+for (const section of lowWordingPaid.sections.filter((candidate) => candidate.id === "relationships" || candidate.id === "work")) {
+  assert.ok(section.paragraphs.every((paragraph) => paragraph.evidence.evidenceLevel === "possibility" && /可能性|かもしれません|考えられます/.test(paragraph.text)));
+  assert.ok(section.paragraphs.every((paragraph) => !/(?:人|強み|特徴)です。$/.test(paragraph.text)));
+}
 
 const punchInput = makeReportInput();
 const punch = generateFreeReport(punchInput).sections.flatMap((section) => section.paragraphs).find((paragraph) => paragraph.id === "free-answer-punch");

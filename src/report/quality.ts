@@ -1,12 +1,10 @@
 import { PAID_FREE_OVERLAP_LIMIT } from "../constants";
-import type { FreeReport, PaidReport, PaidReportQualityIssue, PaidReportQualityResult, ReportSectionId, WordingStrength } from "../types";
+import type { FreeReport, PaidReport, PaidReportQualityIssue, PaidReportQualityResult, ReportSectionId } from "../types";
 import { calculatePaidFreeOverlap } from "./overlap";
 import { detectProhibitedExpressions } from "./prohibited";
 
 const RESOLVED_REQUIRED: ReportSectionId[] = ["headline", "core_desire", "expression", "strengths", "friction", "gap", "defense", "utilization", "relationships", "work", "action", "observation", "disclaimer"];
 const LOW_REQUIRED: ReportSectionId[] = ["headline", "core_desire", "expression", "gap", "defense", "utilization", "action", "disclaimer"];
-
-const expectedWording = (confidence: "high" | "medium" | "low"): WordingStrength => confidence === "high" ? "direct" : confidence === "medium" ? "moderate" : "soft";
 
 export function validatePaidReport(report: PaidReport, freeReport?: FreeReport): PaidReportQualityResult {
   const issues: PaidReportQualityIssue[] = [];
@@ -16,8 +14,10 @@ export function validatePaidReport(report: PaidReport, freeReport?: FreeReport):
   for (const id of report.route === "resolved" ? RESOLVED_REQUIRED : LOW_REQUIRED) if (!sectionIds.has(id)) add("missing_section", `Required section is missing: ${id}`, id);
   for (const section of report.sections) for (const paragraph of section.paragraphs) {
     if (!paragraph.evidence || !paragraph.evidence.sourceQuestionIds.length) add("missing_evidence", "Paragraph evidence and sourceQuestionIds are required", section.id, paragraph.id);
-    const downgraded = paragraph.evidence?.sourceScores?.reliabilityDowngraded === true;
-    if (paragraph.evidence && paragraph.evidence.wordingStrength !== (downgraded ? "soft" : expectedWording(paragraph.evidence.confidence))) add("wording_mismatch", "confidence and wordingStrength are inconsistent", section.id, paragraph.id);
+    const structuralWording = paragraph.evidence ? report.metadata.effectiveWording[paragraph.evidence.block] : undefined;
+    if (paragraph.evidence && (!structuralWording || paragraph.evidence.wordingStrength !== structuralWording)) add("wording_mismatch", "wordingStrength does not match report structural wording metadata", section.id, paragraph.id);
+    const templateClaim = /^(?:paid|free)-(?:core|expression|protects|impression|strength|misunderstanding|friction|relationships|work)/.test(paragraph.id);
+    if (templateClaim && paragraph.evidence?.wordingStrength === "soft" && /(?:人です|強みです|しやすい人です|特徴です)。?$/.test(paragraph.text)) add("wording_mismatch", "Soft template paragraph retains a strong declarative ending", section.id, paragraph.id);
     if ((paragraph.evidence?.scenarioScope === "work_possibility" || paragraph.evidence?.scenarioScope === "relationship_possibility") && paragraph.evidence.evidenceLevel !== "possibility") add("scenario_scope_mismatch", "Unmeasured domains must use possibility evidence", section.id, paragraph.id);
     for (const finding of detectProhibitedExpressions(paragraph.text)) add("prohibited_expression", `${finding.category}: ${finding.matchedText}`, section.id, paragraph.id);
     if (section.id === "defense" && !paragraph.claimKind) add("defense_overclaim", "Defense paragraphs require a structured claimKind", section.id, paragraph.id);

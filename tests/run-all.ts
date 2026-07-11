@@ -14,3 +14,4 @@ import "./report-quality.test";
 import "./report-integration.test";
 import "./report-content.test";
 import "./report-engine-e2e.test";
+import "./report-full-e2e.test";

@@ -5,9 +5,9 @@ import type {
   ReportRoute, ReportScenarioScope, ReportSection, ReportSectionId, TypeId,
 } from "../types";
 import { buildAnchors, buildAnswerReferences } from "./anchors";
-import { evidenceFor } from "./evidence";
+import { effectiveWordingForInput, evidenceFor } from "./evidence";
 import { PaidReportQualityError, validatePaidReport } from "./quality";
-import { labelTemplate, resolvedLabel, resolvedSubtitle } from "./templates/labels";
+import { ANSWER_PUNCH_LEADS, labelTemplate, renderLabelCopy, resolvedLabel, resolvedSubtitle } from "./templates/labels";
 import {
   breadthText, CONFIRMATION_STATUS_TEXT, confidenceSentence, GAP_DIRECTION_TEXT, GAP_PATTERN_TEXT,
   gapStrengthText, UTILIZATION_BAND_TEXT, UTILIZATION_USE_BAND_TEXT, utilizationGapText,
@@ -35,6 +35,8 @@ function validateReportInput(input: ReportInput): void {
 function metadata(input: ReportInput): ReportMetadata {
   const versions = ["questionBankVersion", "scoringVersion", "engineVersion", "reportTemplateVersion"] as const;
   for (const key of versions) if (!input.result.metadata[key] || input.result.metadata[key] !== input.route[key]) throw new Error(`Report version mismatch or missing: ${key}`);
+  const blocks: DiagnosisBlock[] = ["type", "expression", "gap", "defense", "utilization"];
+  const wording = Object.fromEntries(blocks.map((block) => [block, effectiveWordingForInput(input, block)])) as Record<DiagnosisBlock, ReturnType<typeof effectiveWordingForInput>>;
   return {
     sessionId: input.route.sessionId,
     questionBankVersion: input.result.metadata.questionBankVersion,
@@ -46,6 +48,8 @@ function metadata(input: ReportInput): ReportMetadata {
     gapConfidence: input.result.confidence.gap,
     defenseConfidence: input.result.confidence.defense,
     utilizationConfidence: input.result.confidence.utilization,
+    effectiveWording: Object.fromEntries(blocks.map((block) => [block, wording[block].strength])) as ReportMetadata["effectiveWording"],
+    reliabilityDowngradedBlocks: blocks.filter((block) => wording[block].reliabilityDowngraded),
   };
 }
 
@@ -91,24 +95,6 @@ function compact(text: string, limit = 42): string {
   return normalized.length > limit ? `${normalized.slice(0, limit)}…` : normalized;
 }
 
-function calibrated(input: ReportInput, block: DiagnosisBlock, text: string): string {
-  const confidence = input.result.confidence[block];
-  if (confidence === "high") return text;
-  const moderate = text
-    .replace(/傾向があります。$/, "傾向が比較的見られました。")
-    .replace(/出し方です。$/, "出し方が比較的見られました。")
-    .replace(/人です。$/, "特徴が比較的見られました。")
-    .replace(/強みです。$/, "強みとして表れやすいでしょう。")
-    .replace(/ことがあります。$/, "ことが比較的多く見られました。");
-  const soft = text
-    .replace(/傾向があります。$/, "傾向が場面によって表れる可能性があります。")
-    .replace(/出し方です。$/, "出し方になる可能性があります。")
-    .replace(/人です。$/, "特徴が場面によって表れる可能性があります。")
-    .replace(/強みです。$/, "強みとして表れる可能性があります。")
-    .replace(/ことがあります。$/, "ことが場面によって起こる可能性があります。");
-  return confidence === "medium" ? `今回の回答では、${moderate}` : `今回確認できた範囲では、${soft}`;
-}
-
 function answerMeaning(reference: AnswerReference): string {
   if (reference.numericValue != null) return ({ 1: "ほとんど当てはまらない", 2: "あまり当てはまらない", 3: "どちらとも言い切れない", 4: "やや当てはまる", 5: "よく当てはまる" } as Record<number, string>)[reference.numericValue] ?? "回答を選んだ";
   return compact(reference.selectedOptionText, 36);
@@ -123,9 +109,9 @@ function typeReference(input: ReportInput): AnswerReference {
   return comparison ?? common!;
 }
 
-function answerPunch(reference: AnswerReference, protects?: string): string {
-  const protectedFocus = protects?.replace(/を守ろうとしやすい人です。$/, "") ?? "その選択で大切にしたもの";
-  return `たとえば、あなたは「${compact(reference.prompt)}」という場面で「${answerMeaning(reference)}」を選んでいます。結果だけでなく、${protectedFocus}も同時に守ろうとする自分に覚えはありませんか。`;
+function answerPunch(reference: AnswerReference, protectedFocus: string, type?: TypeId): string {
+  const lead = type ? ANSWER_PUNCH_LEADS[type] : "その選択そのものだけでなく";
+  return `たとえば、あなたは「${compact(reference.prompt)}」という場面で「${answerMeaning(reference)}」を選んでいます。${lead}、${protectedFocus}も同時に守ろうとする自分に覚えはありませんか。`;
 }
 
 function gapCopy(input: ReportInput): string {
@@ -213,7 +199,7 @@ function freeHook(input: ReportInput, template: ReturnType<typeof labelTemplate>
     return { id: "free-hook-defense", block: "defense", text: `${name || "複数の反応"}が負荷時の回答で比較的多く見られました。詳細版では、第一防衛と今回だけの反応を分けて確認します。`, sources: sourceFor(input, "defense") };
   }
   if (Math.abs(input.result.utilization.gap) >= 0.5) return { id: "free-hook-utilization", block: "utilization", text: utilizationGapText(input.result.utilization.gap), sources: sourceFor(input, "utilization") };
-  return { id: "free-hook-strength", block: "type", text: `${template.strength} 詳細版では、この力が再現しやすい条件を確認します。`, sources: sourceFor(input, "type") };
+  return { id: "free-hook-strength", block: "type", text: `${renderLabelCopy(template, "strength", input.result.confidence.type)} 詳細版では、この力が再現しやすい条件を確認します。`, sources: sourceFor(input, "type") };
 }
 
 export function generateFreeReport(input: ReportInput): FreeReport {
@@ -225,17 +211,17 @@ export function generateFreeReport(input: ReportInput): FreeReport {
   const hook = freeHook(input, template);
   const route = reportRoute(input);
   const lowCandidates = input.result.resolution.kind === "low-confidence" ? input.result.resolution.candidates.slice(0, 2).map((id) => TYPE_LABELS[id]).join("と") : "";
-  const summary = route === "resolved" ? template.core : `${lowCandidates}の両方が候補に残り、場面によって大切にするものが切り替わる結果です。`;
+  const summary = route === "resolved" ? renderLabelCopy(template, "core", input.result.confidence.type) : `${lowCandidates}の両方が候補に残り、場面によって大切にするものが切り替わる結果です。`;
   const sections = [
     section("headline", [paragraph(input, "free-headline", route === "resolved" ? template.headline : "二つの欲求を、場面に応じて使い分ける結果", "type", "inferred", sourceFor(input, "type"))]),
     section("core_desire", [
-      paragraph(input, "free-answer-punch", answerPunch(typeRef, route === "resolved" ? template.protects : undefined), "type", "direct", [typeRef.questionId], { layer: "personalization" }),
-      paragraph(input, "free-core", route === "resolved" ? calibrated(input, "type", summary) : summary, "type", "derived", sourceFor(input, "type")),
-      paragraph(input, "free-protects", route === "resolved" ? calibrated(input, "type", template.protects) : "どちらか一方だけでなく、結果や関係など複数の大切なものを状況に応じて守ろうとしています。", "type", "inferred", sourceFor(input, "type")),
+      paragraph(input, "free-answer-punch", answerPunch(typeRef, route === "resolved" ? template.protectedFocus : "同時に大切にした複数のもの" , route === "resolved" ? type : undefined), "type", "direct", [typeRef.questionId], { layer: "personalization" }),
+      paragraph(input, "free-core", route === "resolved" ? renderLabelCopy(template, "core", input.result.confidence.type) : summary, "type", "derived", sourceFor(input, "type")),
+      paragraph(input, "free-protects", route === "resolved" ? renderLabelCopy(template, "protects", input.result.confidence.type) : "どちらか一方だけでなく、結果や関係など複数の大切なものを状況に応じて守ろうとしています。", "type", "inferred", sourceFor(input, "type")),
     ]),
     section("expression", [
-      paragraph(input, "free-expression", route === "resolved" ? calibrated(input, "expression", template.expression) : "相手や場面を見ながら、自分の希望を外へ出す量を選び分ける回答が見られます。", "expression", "derived", sourceFor(input, "expression")),
-      paragraph(input, "free-impression", route === "resolved" ? template.impression : "場面によって積極的にも慎重にも見られやすい可能性があります。", "expression", "inferred", sourceFor(input, "expression")),
+      paragraph(input, "free-expression", route === "resolved" ? renderLabelCopy(template, "expression", input.result.confidence.expression) : "相手や場面を見ながら、自分の希望を外へ出す量を選び分ける回答が見られます。", "expression", "derived", sourceFor(input, "expression")),
+      paragraph(input, "free-impression", route === "resolved" ? renderLabelCopy(template, "impression", input.result.confidence.expression) : "場面によって積極的にも慎重にも見られやすい可能性があります。", "expression", "inferred", sourceFor(input, "expression")),
     ]),
     section("observation", [
       paragraph(input, hook.id, hook.text, hook.block, "derived", hook.sources),
@@ -263,17 +249,17 @@ function resolvedPaidSections(input: ReportInput, anchors: PersonalizationAnchor
   return [
     section("headline", [paragraph(input, "paid-headline", template.headline, "type", "inferred", sourceFor(input, "type"))]),
     section("core_desire", [
-      paragraph(input, "paid-core", `${calibrated(input, "type", template.core)} ${calibrated(input, "type", template.protects)} ${sub}`, "type", "derived", sourceFor(input, "type"), { scores: { ...input.result.baseTypeScores, typeFitIncompatible: input.result.typeFit.incompatible } }),
-      paragraph(input, "paid-type-answer", answerPunch(typeRef, template.protects), "type", "direct", [typeRef.questionId], { layer: "personalization", anchorIds: anchorIds(anchors, "answer") }),
+      paragraph(input, "paid-core", `${renderLabelCopy(template, "core", input.result.confidence.type)} ${renderLabelCopy(template, "protects", input.result.confidence.type)} ${sub}`, "type", "derived", sourceFor(input, "type"), { scores: { ...input.result.baseTypeScores, typeFitIncompatible: input.result.typeFit.incompatible } }),
+      paragraph(input, "paid-type-answer", answerPunch(typeRef, template.protectedFocus, type), "type", "direct", [typeRef.questionId], { layer: "personalization", anchorIds: anchorIds(anchors, "answer") }),
     ]),
-    section("expression", [paragraph(input, "paid-expression", `${calibrated(input, "expression", template.expression)} ${CONFIRMATION_STATUS_TEXT[input.result.expression.confirmationStatus]}。`, "expression", "derived", sourceFor(input, "expression"), { anchorIds: anchorIds(anchors, "confirmation"), scores: { rawScore: input.result.expression.rawScore, confirmationStatus: input.result.expression.confirmationStatus } })]),
-    section("strengths", [paragraph(input, "paid-impression", template.impression, "expression", "inferred", sourceFor(input, "expression")), paragraph(input, "paid-strength", template.strength, "type", "inferred", sourceFor(input, "type"))]),
-    section("friction", [paragraph(input, "paid-misunderstanding", template.misunderstanding, "expression", "inferred", sourceFor(input, "expression")), paragraph(input, "paid-friction", template.friction, "gap", "inferred", sourceFor(input, "gap"))]),
+    section("expression", [paragraph(input, "paid-expression", `${renderLabelCopy(template, "expression", input.result.confidence.expression)} ${CONFIRMATION_STATUS_TEXT[input.result.expression.confirmationStatus]}。`, "expression", "derived", sourceFor(input, "expression"), { anchorIds: anchorIds(anchors, "confirmation"), scores: { rawScore: input.result.expression.rawScore, confirmationStatus: input.result.expression.confirmationStatus } })]),
+    section("strengths", [paragraph(input, "paid-impression", renderLabelCopy(template, "impression", input.result.confidence.expression), "expression", "inferred", sourceFor(input, "expression")), paragraph(input, "paid-strength", renderLabelCopy(template, "strength", input.result.confidence.type), "type", "inferred", sourceFor(input, "type"))]),
+    section("friction", [paragraph(input, "paid-misunderstanding", renderLabelCopy(template, "misunderstanding", input.result.confidence.expression), "expression", "inferred", sourceFor(input, "expression")), paragraph(input, "paid-friction", renderLabelCopy(template, "friction", input.result.confidence.gap), "gap", "inferred", sourceFor(input, "gap"))]),
     section("gap", [paragraph(input, "paid-gap-overview", gapCopy(input), "gap", "derived", sourceFor(input, "gap"), { scores: { magnitude: input.result.gap.magnitude, breadth: input.result.gap.breadth, direction: input.result.gap.direction, pattern: input.result.gap.pattern, confirmationStatus: input.result.gap.confirmationStatus } }), maxGapParagraph(input, anchors)]),
     section("defense", defenseClaims(input, anchors)),
     section("utilization", utilizationParagraphs(input, anchors)),
-    section("relationships", [paragraph(input, "paid-relationships", `${template.impression.replace(/でしょう。$/, "可能性があります。")} 関係場面では、${GAP_PATTERN_TEXT[input.result.gap.pattern]}が出し方へ影響することも考えられます。実際の関係行動は未測定です。`, "expression", "possibility", [...sourceFor(input, "expression"), ...sourceFor(input, "gap")], { scope: "relationship_possibility" })]),
-    section("work", [paragraph(input, "paid-work", `仕事場面では、${template.strength.replace(/です。$/, "ことがあります。")} 一方で、${template.friction} 実際の仕事上の成果は未測定です。`, "type", "possibility", [...sourceFor(input, "type"), ...sourceFor(input, "gap")], { scope: "work_possibility" })]),
+    section("relationships", [paragraph(input, "paid-relationships", `${renderLabelCopy(template, "relationshipPossibility", input.result.confidence.expression)} ${GAP_PATTERN_TEXT[input.result.gap.pattern]}が出し方へ影響することも考えられます。実際の関係行動は未測定です。`, "expression", "possibility", [...sourceFor(input, "expression"), ...sourceFor(input, "gap")], { scope: "relationship_possibility" })]),
+    section("work", [paragraph(input, "paid-work", `${renderLabelCopy(template, "workPossibility", input.result.confidence.type)} ${renderLabelCopy(template, "friction", input.result.confidence.gap)} 実際の仕事上の成果は未測定です。`, "type", "possibility", [...sourceFor(input, "type"), ...sourceFor(input, "gap")], { scope: "work_possibility" })]),
     section("action", [paragraph(input, "paid-action", `${action.text} 一週間以内に一度試せる観察行動です。`, "gap", "inferred", action.sourceQuestionIds)]),
     section("observation", [paragraph(input, "paid-observation", `${action.expectedObservation} さらに詳しく見る場合は、切り替わる場面を記録して精密版の材料にできます。`, "utilization", "inferred", sourceFor(input, "utilization"))]),
     section("disclaimer", [paragraph(input, "paid-disclaimer", "このレポートは回答時点の選択を整理した非医療的な情報です。形成原因、現実の成果、他者の感情や将来を確定するものではありません。", "type", "possibility", sourceFor(input, "type"))]),
@@ -289,9 +275,9 @@ function lowPaidSections(input: ReportInput, anchors: PersonalizationAnchor[], a
   return [
     section("headline", [paragraph(input, "low-headline", `${TYPE_LABELS[first]}と${TYPE_LABELS[second]}が上位候補として残る結果です。`, "type", "derived", sourceFor(input, "type"))]),
     section("core_desire", [
-      paragraph(input, "low-common", `共通しているのは、${firstTemplate.protects.replace(/人です。$/, "こと")}と、${secondTemplate.protects.replace(/人です。$/, "こと")}をどちらも無視しにくい点です。`, "type", "inferred", sourceFor(input, "type")),
-      paragraph(input, "low-difference", `違いは、${TYPE_LABELS[first]}が「${firstTemplate.core}」へ、${TYPE_LABELS[second]}が「${secondTemplate.core}」へ反応しやすい点です。`, "type", "derived", sourceFor(input, "type")),
-      paragraph(input, "low-comparison-answer", answerPunch(typeRef), "type", "direct", [typeRef.questionId], { layer: "personalization", anchorIds: anchorIds(anchors, "comparison") }),
+      paragraph(input, "low-common", `共通しているのは、「${firstTemplate.protectedFocus}」と「${secondTemplate.protectedFocus}」をどちらも無視しにくい点です。`, "type", "inferred", sourceFor(input, "type")),
+      paragraph(input, "low-difference", `違いは、${TYPE_LABELS[first]}が「${firstTemplate.coreFocus}」を、${TYPE_LABELS[second]}が「${secondTemplate.coreFocus}」を優先しやすい点です。`, "type", "derived", sourceFor(input, "type")),
+      paragraph(input, "low-comparison-answer", answerPunch(typeRef, `${firstTemplate.protectedFocus}と${secondTemplate.protectedFocus}`), "type", "direct", [typeRef.questionId], { layer: "personalization", anchorIds: anchorIds(anchors, "comparison") }),
     ]),
     section("expression", [paragraph(input, "low-expression", `汎用の出し方回答では、${firstTemplate.expression} 同時に、${secondTemplate.expression} 場面と相手を見て出し方を選ぶ余地があります。`, "expression", "derived", sourceFor(input, "expression"))]),
     section("gap", [paragraph(input, "low-gap", `汎用のズレ回答では、${gapCopy(input)} どの候補が前に出たかと合わせて観察できます。`, "gap", "derived", sourceFor(input, "gap")), maxGapParagraph(input, anchors)]),
@@ -299,7 +285,7 @@ function lowPaidSections(input: ReportInput, anchors: PersonalizationAnchor[], a
     section("utilization", [
       ...utilizationParagraphs(input, anchors),
       paragraph(input, "low-candidate-utilization", `${TYPE_LABELS[first]}と${TYPE_LABELS[second]}に対応する使いこなし回答をまとめると、${UTILIZATION_BAND_TEXT[input.result.utilization.awarenessBand]}一方、${UTILIZATION_USE_BAND_TEXT[input.result.utilization.utilizationBand]}状態です。`, "utilization", "derived", sourceFor(input, "utilization")),
-      paragraph(input, "low-switch-condition", `切り替わる条件として、${firstTemplate.friction} また、${secondTemplate.friction} どちらが近かったかを場面ごとに確かめてください。`, "type", "inferred", sourceFor(input, "type")),
+      paragraph(input, "low-switch-condition", `切り替わる条件として、「${firstTemplate.coreFocus}」と「${secondTemplate.coreFocus}」のどちらを先に守ろうとしたかを、場面ごとに確かめてください。`, "type", "inferred", sourceFor(input, "type")),
     ]),
     section("action", [paragraph(input, "low-action", `${action.text} ${action.expectedObservation}`, "gap", "inferred", action.sourceQuestionIds)]),
     section("disclaimer", [paragraph(input, "low-disclaimer", "上位候補を無理に一つへ決めず、回答時点の幅として示しています。今後の観察後に再回答したり、精密版の材料へつなげたりできます。医療行為ではありません。", "type", "possibility", sourceFor(input, "type"))]),

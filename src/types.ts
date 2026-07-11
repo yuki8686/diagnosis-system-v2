@@ -376,6 +376,7 @@ export interface PersonalizationAnchor {
 }
 
 export interface ReportEvidence {
+  block: DiagnosisBlock;
   evidenceLevel: EvidenceLevel;
   sourceQuestionIds: string[];
   sourceScores?: Record<string, number | string | boolean>;
@@ -415,6 +416,8 @@ export interface ReportMetadata {
   gapConfidence: Confidence;
   defenseConfidence: Confidence;
   utilizationConfidence: Confidence;
+  effectiveWording: Record<DiagnosisBlock, WordingStrength>;
+  reliabilityDowngradedBlocks: DiagnosisBlock[];
 }
 
 export interface ActionProposal {

@@ -155,4 +155,4 @@ const scoredDefense = scoreDefense(questionBank.defense, questionBank.defense.ma
 assert.deepEqual(scoredDefense.opportunities, { counterattack: 2, prove: 5, distance: 5, "self-efface": 5, analyze: 5, "self-blame": 3, numb: 2, freeze: 1 });
 assert.deepEqual(scoredDefense.opportunityLimited, ["counterattack", "self-blame", "numb", "freeze"]);
 
-console.log("real-engine report E2E scenarios passed");
+console.log("branch-targeted engine/report fixture scenarios passed");

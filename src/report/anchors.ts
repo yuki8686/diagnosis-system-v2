@@ -33,7 +33,7 @@ export function buildAnchors(input: ReportInput): PersonalizationAnchor[] {
     id: `gap-${result.gap.maxGapPair.pairId}`,
     kind: "gap_pair",
     sourceQuestionIds: [result.gap.maxGapPair.innerQuestionId, result.gap.maxGapPair.publicQuestionId],
-    summary: `本音側と対人側で${GAP_DIRECTION_TEXT[result.gap.direction]}に${gapStrengthText(result.gap.strength)}が見られた場面`,
+    summary: `本音側と対人側の間で、${GAP_DIRECTION_TEXT[result.gap.direction]}に${gapStrengthText(result.gap.strength)}が見られた場面`,
     confidence: result.confidence.gap,
   });
   for (const reaction of result.defense.observedReactions) anchors.push({

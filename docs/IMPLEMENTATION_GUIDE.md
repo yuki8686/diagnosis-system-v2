@@ -92,6 +92,10 @@ type ReportInput = {
 
 confidenceがhighなら`direct`、mediumなら`moderate`、lowなら`soft`です。同一ブロックで異なるmajor信頼性issueが2種類以上重なる場合だけ、そのブロックを`soft`へ下げます。infoの`positionStreak`単独では弱めません。
 
+テンプレート主要文は`renderLabelCopy`でhigh／medium／lowの文末まで変換します。`sourceScores.reliabilityDowngraded`は監査情報に留め、品質ゲートは`ReportMetadata.effectiveWording`と各段落の`evidence.block`を照合します。任意の`sourceScores`書き換えだけではwording検査を回避できません。
+
+low-confidence候補比較では、完成文ではなく各ラベルの`coreFocus`と`protectedFocus`を使います。一撃の導入句は勝ち筋・つながり・読み解き・軸で切り替え、low-confidenceでは候補へ寄らない中立表現を使います。relationshipsとworkも12ラベル専用断片から生成し、未測定領域として`possibility`を維持します。
+
 本文には`strong`、`not_needed`、`growth`などの内部enumや、生の小数スコアを表示しません。`presentation.ts`でズレ、確認状態、確信度、防衛、機会数制限、気づき・活用帯、段差を自然な日本語へ変換します。内部値はevidenceの`sourceScores`とmetadataで監査用に保持します。
 
 有料版の`AnswerReference`は異なる質問IDを3件以上保持し、タイプまたは比較から1件以上、ズレ・防衛・使いこなしから1件以上を含めます。最大ズレペアがある場合はギャップ章の根拠へ接続し、確認回答が最終判定に使われた場合はconfirmationアンカーを作ります。
@@ -136,6 +140,9 @@ confidenceがhighなら`direct`、mediumなら`moderate`、lowなら`soft`です
 npm ci
 npm run typecheck
 npm test
+npm run report:samples
 ```
 
-レポートテストは12ラベル、同タイプ3出し方の本文差、low-confidence、アンカー0〜2件、回答本文参照、最大ズレ、防衛同率・low・機会数制限・構造claim、確認回答、4段階evidence、3段階wording、内部値混入、禁止表現、品質ゲート、重複率境界、A・B・C統合を検証します。さらに実質問バンクの回答から`buildDiagnosisResult`を経由し、無料・有料レポートと品質ゲートまで通すE2Eを実行します。
+レポートテストは12ラベル、同タイプ3出し方の本文差、low-confidence、アンカー0〜2件、回答本文参照、最大ズレ、防衛同率・low・機会数制限・構造claim、確認回答、4段階evidence、3段階wording、内部値混入、禁止表現、品質ゲート、重複率境界、A・B・C統合を検証します。分岐狙いの手動TypeResolution fixtureとは別に、共通12回答からbaseスコア、比較要否、初回・追加比較、`resolveType`、route、最終結果、無料・有料レポート、品質ゲートまで通す完全E2Eも実行します。
+
+`report:samples`はテストとは別の目視確認用です。12ラベル無料・有料、low-confidence、防衛同率、`opportunityLimited`、確認あり、confidence lowを含むJSONを標準出力へ出します。固定スナップショットは作成しません。
