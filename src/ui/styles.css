@@ -171,6 +171,18 @@ h1, h2, h3 { font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; }
 .confirm-actions { position: static; background: transparent; padding: 0; margin-top: 26px; }
 .confirm-actions .primary:disabled { cursor: not-allowed; opacity: .45; transform: none; }
 
+/* Result generation: copied from loadingPage in the approved HTML. */
+.loading-wrap { min-height: 100vh; display: grid; place-items: center; padding: 28px; }
+.loading-card { width: min(620px, 100%); text-align: center; padding: 48px 30px; border-radius: 32px; background: linear-gradient(145deg, #fffaf7, #f7edf3 62%, #efeff8); border: 1px solid rgba(169, 99, 125, .12); box-shadow: var(--shadow); }
+.layers { width: 180px; height: 150px; margin: 0 auto 28px; position: relative; }
+.layer { position: absolute; inset: 0; border-radius: 26px; background: rgba(255, 255, 255, .78); border: 1px solid rgba(169, 99, 125, .12); box-shadow: 0 16px 40px rgba(88, 58, 72, .08); }
+.layer:nth-child(1) { transform: translate(-20px, 18px) rotate(-5deg); }
+.layer:nth-child(2) { transform: translate(20px, 8px) rotate(4deg); }
+.layer:nth-child(3) { transform: translate(0, 0); }
+.loading-card h2 { font-size: 32px; margin: 0 0 12px; }
+.loading-card p { margin: 0; color: #746970; line-height: 1.8; }
+.loading-retry { margin-top: 26px; }
+
 /* Existing modal and result placeholder remain outside this UI-finish scope. */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(47, 41, 48, .34); backdrop-filter: blur(4px); display: grid; place-items: center; padding: 20px; z-index: 20; }
 .modal-card { width: min(460px, 100%); background: #fffdfb; border-radius: 26px; padding: 28px; border: 1px solid rgba(169, 99, 125, .12); box-shadow: 0 28px 90px rgba(47, 41, 48, .24); }

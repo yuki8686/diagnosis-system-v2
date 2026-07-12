@@ -5,11 +5,12 @@ import type { ChoiceOption, QuestionDefinition, TypeId } from "../types";
 import { toAnswer } from "./adapter";
 import { ConfirmationScreen } from "./components/ConfirmationScreen";
 import { DiagnosisIntro } from "./components/DiagnosisIntro";
+import { LoadingScreen } from "./components/LoadingScreen";
 import { QuestionScreen } from "./components/QuestionScreen";
 import { RestartConfirmModal } from "./components/RestartConfirmModal";
 import { TopPage } from "./components/TopPage";
-import { buildRoute, commonQuestions, comparisonAnswersForPair, comparisonQuestions, nextQuestionSetAfterCommon, prepareDiagnosisCompletion, questionsForIds, resolveCommon, scoreComparison } from "./engine";
-import { activeUiScreen, hasSavedProgress, initialScreen, nextPageIndex, previousPageIndex, shouldScrollWindowToTop, type NormalUiScreen, type UiScreen } from "./flow";
+import { buildRoute, commonQuestions, comparisonAnswersForPair, comparisonQuestions, finishDiagnosis, nextQuestionSetAfterCommon, prepareDiagnosisCompletion, questionsForIds, resolveCommon, scoreComparison } from "./engine";
+import { activeUiScreen, hasSavedProgress, initialScreen, nextPageIndex, previousPageIndex, RESULT_LOADING_STEP_MS, RESULT_LOADING_TITLES, shouldScrollWindowToTop, shouldStartResultGeneration, type NormalUiScreen, type UiScreen } from "./flow";
 import { buildQuestionPages } from "./page-builder";
 import { activeSessionAnswers, invalidateDerivedState, loadSession, newSession, questionHistoryEntry, restorePreviousQuestionHistory, saveSession, STORAGE_KEY, upsertAnswer, type DiagnosisSession } from "./session";
 import { completionConfirmationAfterAnswer, nextUnansweredQuestionId, questionNavigationKey, unansweredQuestionIds as findUnansweredQuestionIds } from "./question-state";
@@ -27,8 +28,12 @@ export default function App() {
   const [unansweredFocusRequest, setUnansweredFocusRequest] = useState(0);
   const [focusQuestionId, setFocusQuestionId] = useState<string>();
   const [focusRequest, setFocusRequest] = useState(0);
+  const [generationError, setGenerationError] = useState<string>();
+  const [generationAttempt, setGenerationAttempt] = useState(0);
+  const [generationTitleIndex, setGenerationTitleIndex] = useState(0);
   const startedAt = useRef(Date.now());
   const previousActiveScreen = useRef<NormalUiScreen | undefined>(undefined);
+  const generationResultRef = useRef<{ sessionId?: string; finished?: DiagnosisSession }>({});
   const hasSaved = hasSavedProgress(session);
   const questionList = useMemo(() => session.currentQuestionIds.length ? questionsForIds(session.currentQuestionIds) : commonQuestions, [session.currentQuestionIds]);
   const pages = useMemo(() => buildQuestionPages(questionList), [questionList]);
@@ -41,6 +46,37 @@ export default function App() {
     if (shouldScrollWindowToTop(previousActiveScreen.current, activeScreen)) window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     previousActiveScreen.current = activeScreen;
   }, [activeScreen]);
+
+  useEffect(() => {
+    if (screen !== "generation-pending" || session.freeReport) return;
+    if (shouldStartResultGeneration(screen, Boolean(session.freeReport), generationResultRef.current.sessionId, session.sessionId)) {
+      try {
+        const finished = finishDiagnosis(session);
+        if (!finished.freeReport) throw new Error("Result generation did not produce a report");
+        generationResultRef.current = { sessionId: session.sessionId, finished };
+        setGenerationError(undefined);
+      } catch (caught) {
+        console.error("Diagnosis result generation failed", caught);
+        generationResultRef.current = {};
+        setGenerationError("時間をおいて、もう一度お試しください。");
+        return;
+      }
+    }
+    const finished = generationResultRef.current.finished;
+    if (!finished) return;
+    setGenerationTitleIndex(0);
+    const secondTitleTimer = window.setTimeout(() => setGenerationTitleIndex(1), RESULT_LOADING_STEP_MS);
+    const thirdTitleTimer = window.setTimeout(() => setGenerationTitleIndex(2), RESULT_LOADING_STEP_MS * 2);
+    const completeTimer = window.setTimeout(() => {
+      commit(finished);
+      setScreen("result");
+    }, RESULT_LOADING_STEP_MS * RESULT_LOADING_TITLES.length);
+    return () => {
+      window.clearTimeout(secondTitleTimer);
+      window.clearTimeout(thirdTitleTimer);
+      window.clearTimeout(completeTimer);
+    };
+  }, [generationAttempt, screen, session]);
 
   const commit = (next: DiagnosisSession) => { setSession(next); saveSession(next); };
   const comparisonPhaseFor = (value: DiagnosisSession): "initial" | "additional" => {
@@ -134,11 +170,19 @@ export default function App() {
   const reviewAnswers = () => { setError(""); setUnansweredQuestionIds([]); setFocusQuestionId(undefined); setScreen("questions"); };
   const requestResultGeneration = () => {
     if (session.completionConfirmation === undefined || screen === "generation-pending") return;
+    setGenerationError(undefined);
+    setGenerationTitleIndex(0);
     setScreen("generation-pending");
+  };
+  const retryResultGeneration = () => {
+    if (screen !== "generation-pending" || generationResultRef.current.sessionId) return;
+    setGenerationError(undefined);
+    setGenerationTitleIndex(0);
+    setGenerationAttempt((value) => value + 1);
   };
 
   if (activeScreen === "resume-blocked") return <main className="screen intro-screen"><div className="shell"><header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>INNER NOTE</div></header><section className="center-main"><div className="panel blocked-panel"><p className="kicker">VERSION UPDATE</p><h1>保存済みの診断を<br/>再開できません。</h1><p>診断内容が更新されたため、保存済みの回答との互換性を確認できませんでした。安全のため、現在の保存内容は再開せず新しく始めてください。</p><div className="panel-actions"><button className="primary" onClick={() => { localStorage.removeItem(STORAGE_KEY); setSession(newSession()); setScreen("intro"); }}>新しく診断を開始する</button><button className="ghost" onClick={() => setScreen("top")}>トップへ戻る</button></div></div></section></div></main>;
   if (activeScreen === "result" && session.freeReport) return <main className="screen result-placeholder"><div className="shell"><header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>INNER NOTE</div><button className="linkbtn" onClick={() => setScreen("top")}>トップへ戻る</button></header><section className="result-hero"><p className="kicker">YOUR INNER NOTE</p><h1>{session.freeReport.label}</h1><p>{session.freeReport.subtitle}</p><p>{session.freeReport.summary}</p></section><section className="result-placeholder-card"><h2>無料結果画面の全面仕上げは次工程です</h2><p>診断エンジンによる結果データは生成されています。今回の範囲外のため、詳細表示は既存の簡易表示を維持しています。</p></section></div></main>;
 
-  return <>{activeScreen === "top" && <TopPage hasSavedProgress={hasSaved} onStart={() => setScreen("intro")} onResume={resume} onRestart={() => requestRestart("top")}/>} {activeScreen === "intro" && <DiagnosisIntro hasSavedProgress={hasSaved} onStart={hasSaved ? () => requestRestart("intro") : startFresh} onResume={resume} onRestart={() => requestRestart("intro")} onBack={() => setScreen("top")}/>} {activeScreen === "questions" && <QuestionScreen page={page} pageIndex={pageIndex} pageCount={pages.length} selectedOptionId={selectedOptionId} optionsFor={(question) => orderQuestionOptions(question, session.sessionSeed)} onAnswer={answer} onPrevious={goPrevious} onNext={advance} onPause={pause} error={error} unansweredQuestionIds={unansweredQuestionIds} unansweredFocusRequest={unansweredFocusRequest} focusQuestionId={focusQuestionId} focusRequest={focusRequest} navigationKey={questionNavigationKey(pageIndex, session.currentQuestionIds, stageFor(session))} canGoBack={pageIndex > 0 || Boolean(session.questionHistory?.length)}/>} {activeScreen === "confirmation" && <ConfirmationScreen selectedValue={session.completionConfirmation} isGenerationPending={screen === "generation-pending"} onSelect={selectCompletionConfirmation} onReview={reviewAnswers} onPause={pause} onCreateResults={requestResultGeneration}/>} {screen === "restart-confirm" && <RestartConfirmModal onCancel={() => setScreen(restartReturnScreen)} onConfirm={startFresh}/>}</>;
+  return <>{activeScreen === "top" && <TopPage hasSavedProgress={hasSaved} onStart={() => setScreen("intro")} onResume={resume} onRestart={() => requestRestart("top")}/>} {activeScreen === "intro" && <DiagnosisIntro hasSavedProgress={hasSaved} onStart={hasSaved ? () => requestRestart("intro") : startFresh} onResume={resume} onRestart={() => requestRestart("intro")} onBack={() => setScreen("top")}/>} {activeScreen === "questions" && <QuestionScreen page={page} pageIndex={pageIndex} pageCount={pages.length} selectedOptionId={selectedOptionId} optionsFor={(question) => orderQuestionOptions(question, session.sessionSeed)} onAnswer={answer} onPrevious={goPrevious} onNext={advance} onPause={pause} error={error} unansweredQuestionIds={unansweredQuestionIds} unansweredFocusRequest={unansweredFocusRequest} focusQuestionId={focusQuestionId} focusRequest={focusRequest} navigationKey={questionNavigationKey(pageIndex, session.currentQuestionIds, stageFor(session))} canGoBack={pageIndex > 0 || Boolean(session.questionHistory?.length)}/>} {activeScreen === "confirmation" && <ConfirmationScreen selectedValue={session.completionConfirmation} isGenerationPending={screen === "generation-pending"} onSelect={selectCompletionConfirmation} onReview={reviewAnswers} onPause={pause} onCreateResults={requestResultGeneration}/>} {activeScreen === "generation-pending" && <LoadingScreen title={RESULT_LOADING_TITLES[generationTitleIndex]} error={generationError} onRetry={retryResultGeneration}/>} {screen === "restart-confirm" && <RestartConfirmModal onCancel={() => setScreen(restartReturnScreen)} onConfirm={startFresh}/>}</>;
 }
