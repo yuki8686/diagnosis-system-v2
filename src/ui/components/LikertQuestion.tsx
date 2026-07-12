@@ -1,0 +1,5 @@
+import type { ChoiceOption, QuestionDefinition } from "../../types";
+
+export function LikertQuestion({ question, selected, options, isUnanswered, onAnswer }: { question: QuestionDefinition; selected?: string; options: ChoiceOption[]; isUnanswered: boolean; onAnswer: (option: ChoiceOption) => void }) {
+  return <article className={isUnanswered ? "question-card unanswered" : "question-card"} data-question-id={question.id} tabIndex={-1}><p className="q-text">{question.prompt}</p><div className="scale-labels scale-labels-three" aria-hidden="true"><span>そう思わない</span><span>どちらともいえない</span><span>そう思う</span></div><div className="likert" role="group" aria-label={`${question.prompt}。1はそう思わない、3はどちらともいえない、5はそう思う`}>{options.map((option) => <button type="button" className={selected === option.id ? "likert-btn selected" : "likert-btn"} aria-pressed={selected === option.id} aria-label={`${option.label}を選択`} key={option.id} onClick={() => onAnswer(option)}><span className="circle"/><span>{option.label}</span></button>)}</div></article>;
+}

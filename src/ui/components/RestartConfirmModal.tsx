@@ -1,0 +1,3 @@
+export function RestartConfirmModal({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  return <div className="modal-backdrop" role="presentation"><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="restart-title"><p className="kicker">RESTART DIAGNOSIS</p><h1 id="restart-title">保存済みの回答を<br/>最初からやり直しますか？</h1><p>現在の回答、途中位置、出題ルートは新しい診断で置き換わります。この操作は元に戻せません。</p><div className="modal-actions"><button className="secondary" autoFocus onClick={onCancel}>戻る</button><button className="primary" onClick={onConfirm}>最初から診断する</button></div></section></div>;
+}

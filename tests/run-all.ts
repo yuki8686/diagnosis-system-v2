@@ -15,4 +15,7 @@ import "./report-integration.test";
 import "./report-content.test";
 import "./report-engine-e2e.test";
 import "./ui-integration.test";
+import "./ui-flow.test";
+import "./ui-common-comparison-transition.test";
+import "./ui-question-flow.test";
 import "./report-full-e2e.test";
