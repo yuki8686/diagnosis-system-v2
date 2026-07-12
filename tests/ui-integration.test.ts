@@ -14,4 +14,5 @@ const second = { ...first, optionId: question.options[1].id };
 assert.deepEqual(upsertAnswer([first], second), [second]);
 assert.equal(versionsMatch({ versions: CURRENT_VERSIONS }), true);
 assert.equal(versionsMatch({ versions: { ...CURRENT_VERSIONS, engineVersion: "old" } }), false);
+assert.equal(versionsMatch({ versions: { ...CURRENT_VERSIONS, reportTemplateVersion: "1.0.0" } }), false, "sessions generated before the structured free report format cannot resume");
 console.log("UI page, answer, and version-session tests passed");

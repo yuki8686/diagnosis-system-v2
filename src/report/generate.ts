@@ -1,13 +1,14 @@
 import { DEFENSE_LABELS, TYPE_LABELS } from "../constants";
 import type {
-  ActionProposal, AnswerReference, DefenseCategory, DefenseClaimKind, DiagnosisBlock, FreeReport,
-  PaidReport, PersonalizationAnchor, ReportInput, ReportLayer, ReportMetadata, ReportParagraph,
+  ActionProposal, AnswerReference, DefenseCategory, DefenseClaimKind, DiagnosisBlock, FreeGapState,
+  FreeReport, FreeReportDetails, FreeReportDisplayItem, PaidReport, PersonalizationAnchor, ReportInput,
+  ReportLayer, ReportMetadata, ReportParagraph,
   ReportRoute, ReportScenarioScope, ReportSection, ReportSectionId, TypeId,
 } from "../types";
 import { buildAnchors, buildAnswerReferences } from "./anchors";
 import { effectiveWordingForInput, evidenceFor } from "./evidence";
 import { PaidReportQualityError, validatePaidReport } from "./quality";
-import { ANSWER_PUNCH_LEADS, labelTemplate, renderLabelCopy, resolvedLabel, resolvedSubtitle } from "./templates/labels";
+import { ANSWER_PUNCH_LEADS, conditionTemplate, labelTemplate, renderLabelCopy, resolvedLabel, resolvedSubtitle } from "./templates/labels";
 import {
   breadthText, CONFIRMATION_STATUS_TEXT, confidenceSentence, GAP_DIRECTION_TEXT, GAP_PATTERN_TEXT,
   gapStrengthText, UTILIZATION_BAND_TEXT, UTILIZATION_USE_BAND_TEXT, utilizationGapText,
@@ -87,6 +88,15 @@ function paragraph(
   };
 }
 
+function displayItem(
+  input: ReportInput, id: string, text: string, block: DiagnosisBlock,
+  level: "direct" | "derived" | "inferred" | "possibility", sourceIds: string[],
+  options: Parameters<typeof paragraph>[6] = {},
+): FreeReportDisplayItem {
+  const value = paragraph(input, id, text, block, level, sourceIds, options);
+  return { id: value.id, text: value.text, evidence: value.evidence, anchorIds: value.anchorIds };
+}
+
 function section(id: ReportSectionId, paragraphs: ReportParagraph[]): ReportSection { return { id, title: TITLES[id], paragraphs }; }
 function anchorIds(anchors: PersonalizationAnchor[], kind: PersonalizationAnchor["kind"]): string[] { return anchors.filter((anchor) => anchor.kind === kind).slice(0, 1).map((anchor) => anchor.id); }
 
@@ -122,6 +132,81 @@ function gapCopy(input: ReportInput): string {
     `今回の回答では、${GAP_PATTERN_TEXT[gap.pattern]}が比較的見られました。${GAP_DIRECTION_TEXT[gap.direction]}として、${gapStrengthText(gap.strength)}が${breadthText(gap.breadth)}。`,
     `今回確認できた範囲では、${GAP_PATTERN_TEXT[gap.pattern]}が場面によって表れる可能性があります。${breadthText(gap.breadth)}。`,
   );
+}
+
+export function freeGapState(gap: ReportInput["result"]["gap"]): FreeGapState {
+  if (gap.pattern === "small") return "aligned";
+  if (gap.pattern === "reversal") return "mixed";
+  if (gap.pattern === "unclear") return "unclear";
+  if (gap.pattern === "suppression" || gap.pattern === "amplification") {
+    if (gap.strength === "light") return "light";
+    if (gap.strength === "medium") return "medium";
+    if (gap.strength === "strong") return "strong";
+    throw new Error("Directional gap state requires a strength");
+  }
+  throw new Error("Unsupported gap pattern for free result state");
+}
+
+function publicSelfDetails(input: ReportInput, template: ReturnType<typeof labelTemplate>, anchors: PersonalizationAnchor[]): FreeReportDetails["publicSelf"] {
+  if (input.result.resolution.kind === "low-confidence") return undefined;
+  const expressionSources = sourceFor(input, "expression");
+  const expressionAnchorIds = anchorIds(anchors, "confirmation");
+  return {
+    traits: [
+      displayItem(input, "free-public-expression", renderLabelCopy(template, "expression", input.result.confidence.expression), "expression", "derived", expressionSources, { anchorIds: expressionAnchorIds }),
+      displayItem(input, "free-public-impression", renderLabelCopy(template, "impression", input.result.confidence.expression), "expression", "inferred", expressionSources, { anchorIds: expressionAnchorIds }),
+    ],
+    misunderstanding: displayItem(input, "free-public-misunderstanding", renderLabelCopy(template, "misunderstanding", input.result.confidence.expression), "expression", "inferred", expressionSources, { anchorIds: expressionAnchorIds }),
+  };
+}
+
+function privateSelfDetails(input: ReportInput, template: ReturnType<typeof labelTemplate>, anchors: PersonalizationAnchor[]): FreeReportDetails["privateSelf"] {
+  const gap = input.result.gap;
+  if ((gap.pattern !== "suppression" && gap.pattern !== "amplification" && gap.pattern !== "reversal") || input.result.confidence.gap === "low" || !gap.maxGapPair) return undefined;
+  const typeText = confidenceSentence(
+    input.result.confidence.type,
+    `内側の回答では、「${template.protectedFocus}」を大切にする傾向が示されています。`,
+    `今回の回答では、内側の回答で「${template.protectedFocus}」を大切にする傾向が比較的見られました。`,
+    `今回確認できた範囲では、内側の回答で「${template.protectedFocus}」を大切にする可能性があります。`,
+  );
+  const pair = gap.maxGapPair;
+  const pairParagraph = displayItem(input, "free-private-gap-pair", `内側の回答と対人場面の回答に差が大きく出た場面では、${GAP_DIRECTION_TEXT[gap.direction]}として表れやすい可能性があります。今回の出し方の回答も、場面による出し方の幅を示しています。`, "gap", "inferred", [pair.innerQuestionId, pair.publicQuestionId, ...sourceFor(input, "expression")], { anchorIds: anchorIds(anchors, "gap_pair") });
+  if (input.result.resolution.kind === "low-confidence") return { paragraphs: [pairParagraph] };
+  return {
+    paragraphs: [
+      displayItem(input, "free-private-focus", typeText, "type", "derived", sourceFor(input, "type"), { anchorIds: anchorIds(anchors, "answer") }),
+      pairParagraph,
+    ],
+  };
+}
+
+function gapDetails(input: ReportInput, anchors: PersonalizationAnchor[]): FreeReportDetails["gap"] {
+  return {
+    state: freeGapState(input.result.gap),
+    paragraphs: [
+      displayItem(input, "free-gap-overview", gapCopy(input), "gap", "derived", sourceFor(input, "gap"), { anchorIds: anchorIds(anchors, "gap_pair") }),
+    ],
+  };
+}
+
+function conditionDetails(input: ReportInput, type: TypeId, anchors: PersonalizationAnchor[]): FreeReportDetails["conditions"] {
+  if (input.result.resolution.kind === "low-confidence" || input.result.confidence.type === "low") return undefined;
+  const template = conditionTemplate(type, input.result.expression.pattern);
+  const sources = [...new Set([...sourceFor(input, "type"), ...sourceFor(input, "expression")])];
+  const typeAnchorIds = anchorIds(anchors, "answer");
+  return {
+    energizing: template.energizing.map((condition, index) => displayItem(input, `free-condition-energizing-${index + 1}`, `${condition}は、力を出しやすいと考えられる条件です。`, "type", "inferred", sources, { anchorIds: typeAnchorIds })),
+    blocking: template.blocking.map((condition, index) => displayItem(input, `free-condition-blocking-${index + 1}`, `${condition}は、止まりやすさが出る可能性があります。`, "type", "inferred", sources, { anchorIds: typeAnchorIds })),
+  };
+}
+
+function freeReportDetails(input: ReportInput, type: TypeId, template: ReturnType<typeof labelTemplate>, anchors: PersonalizationAnchor[]): FreeReportDetails {
+  return {
+    publicSelf: publicSelfDetails(input, template, anchors),
+    privateSelf: privateSelfDetails(input, template, anchors),
+    gap: gapDetails(input, anchors),
+    conditions: conditionDetails(input, type, anchors),
+  };
 }
 
 function maxGapParagraph(input: ReportInput, anchors: PersonalizationAnchor[]): ReportParagraph {
@@ -192,7 +277,6 @@ function utilizationParagraphs(input: ReportInput, anchors: PersonalizationAncho
 
 type FreeHook = { id: string; block: DiagnosisBlock; text: string; sources: string[] };
 function freeHook(input: ReportInput, template: ReturnType<typeof labelTemplate>): FreeHook {
-  if (input.result.gap.pattern !== "small" && input.result.gap.pattern !== "unclear") return { id: "free-hook-gap", block: "gap", text: gapCopy(input), sources: sourceFor(input, "gap") };
   if (input.result.defense.confidence !== "low") {
     const defense = input.result.defense;
     const name = defense.primary ? `「${DEFENSE_LABELS[defense.primary]}」` : defense.primaryTied.map((id) => `「${DEFENSE_LABELS[id]}」`).join("と");
@@ -229,7 +313,8 @@ export function generateFreeReport(input: ReportInput): FreeReport {
     ]),
     section("disclaimer", [paragraph(input, "free-disclaimer", "この結果は回答時点の傾向を整理するもので、医療行為や人格全体の判定ではありません。", "type", "possibility", sourceFor(input, "type"))]),
   ];
-  return { kind: "free", route, label: labelFor(input), subtitle: route === "resolved" ? resolvedSubtitle(type) : "上位候補が切り替わる条件を観察する結果", summary, anchors, sections, metadata: metadata(input) };
+  const details = freeReportDetails(input, type, template, anchors);
+  return { kind: "free", route, label: labelFor(input), subtitle: route === "resolved" ? resolvedSubtitle(type) : "上位候補が切り替わる条件を観察する結果", summary, anchors, sections, details, metadata: metadata(input) };
 }
 
 function actionProposal(input: ReportInput): ActionProposal {

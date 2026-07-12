@@ -3,7 +3,7 @@ import type { DefenseCategory, TypeId } from "./types";
 export const ENGINE_VERSION = "1.2.0";
 export const SCORING_VERSION = "1.2.0";
 export const QUESTION_BANK_VERSION = "1.1.0";
-export const REPORT_TEMPLATE_VERSION = "1.0.0";
+export const REPORT_TEMPLATE_VERSION = "1.1.0";
 export const PAID_FREE_OVERLAP_LIMIT = 0.35;
 
 export const TYPE_LABELS: Record<TypeId, string> = {

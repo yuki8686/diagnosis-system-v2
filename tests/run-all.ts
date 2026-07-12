@@ -13,6 +13,7 @@ import "./report-generation.test";
 import "./report-quality.test";
 import "./report-integration.test";
 import "./report-content.test";
+import "./free-report-details.test";
 import "./report-engine-e2e.test";
 import "./ui-integration.test";
 import "./ui-flow.test";

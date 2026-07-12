@@ -57,6 +57,7 @@ const report = {
   subtitle: "成果へ向かうために、自分の意図を外へ出す結果",
   summary: "回答時点の傾向です。",
   anchors: [],
+  details: { gap: { state: "aligned", paragraphs: [] } },
   metadata: { sessionId: "session-a", questionBankVersion: "1", scoringVersion: "1", engineVersion: "1", reportTemplateVersion: "1", typeConfidence: "high", expressionConfidence: "medium", gapConfidence: "medium", defenseConfidence: "medium", utilizationConfidence: "medium", effectiveWording: { type: "direct", expression: "direct", gap: "direct", defense: "direct", utilization: "direct" }, reliabilityDowngradedBlocks: [] },
   sections: [
     { id: "expression", title: "出し方", paragraphs: [{ id: "expression-paragraph", text: "出し方の本文", anchorIds: [], layer: "expression", evidence: { block: "expression", evidenceLevel: "derived", sourceQuestionIds: [], confidence: "medium", wordingStrength: "direct", scenarioScope: "general" } }] },

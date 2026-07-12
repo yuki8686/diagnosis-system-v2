@@ -440,6 +440,34 @@ interface ReportBase {
 export interface FreeReport extends ReportBase {
   kind: "free";
   summary: string;
+  details: FreeReportDetails;
+}
+
+export interface FreeReportDisplayItem {
+  id: string;
+  text: string;
+  evidence: ReportEvidence;
+  anchorIds: string[];
+}
+
+export type FreeGapState = "aligned" | "light" | "medium" | "strong" | "mixed" | "unclear";
+
+export interface FreeReportDetails {
+  publicSelf?: {
+    traits: FreeReportDisplayItem[];
+    misunderstanding?: FreeReportDisplayItem;
+  };
+  privateSelf?: {
+    paragraphs: FreeReportDisplayItem[];
+  };
+  gap: {
+    state: FreeGapState;
+    paragraphs: FreeReportDisplayItem[];
+  };
+  conditions?: {
+    energizing: FreeReportDisplayItem[];
+    blocking: FreeReportDisplayItem[];
+  };
 }
 
 export type PaidReportQualityCode =

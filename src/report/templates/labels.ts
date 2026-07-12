@@ -202,6 +202,62 @@ export const LABEL_TEMPLATES = Object.fromEntries(
   }),
 ) as Record<LabelTemplateKey, LabelReportTemplate>;
 
+export interface ConditionTemplate {
+  energizing: [string, string] | [string, string, string];
+  blocking: [string, string] | [string, string, string];
+}
+
+export const CONDITION_TEMPLATES: Record<LabelTemplateKey, ConditionTemplate> = {
+  "win:outward": {
+    energizing: ["目標と任せる範囲が見え、判断を動かせる余地があるとき", "取り組みの結果が共有され、次の一手を選べるとき"],
+    blocking: ["目的や評価の基準が見えないまま、結論だけを急がれるとき", "前へ進める意図を示す余地がないとき"],
+  },
+  "win:inward": {
+    energizing: ["結果を出すまでの準備を自分のペースで整えられるとき", "貢献を確かな形で示す時間と役割があるとき"],
+    blocking: ["期待される結果だけが先に置かれ、考える余地がないとき", "希望や狙いを言葉にしないまま判断を任されるとき"],
+  },
+  "win:adaptive": {
+    energizing: ["動く局面と待つ局面を自分で選べるとき", "周囲の見通しを確かめながら、力を使う場所を決められるとき"],
+    blocking: ["切り替える理由を共有できず、判断だけを急がれるとき", "状況の変化に合わせて役割を選び直せないとき"],
+  },
+  "connect:outward": {
+    energizing: ["働きかけに反応が返り、関係の温度を確かめられるとき", "人と協力する入口を自分から作れるとき"],
+    blocking: ["周囲の反応を整える役割だけを抱え続けるとき", "自分の希望を伝える余地なく、関係の維持を急がれるとき"],
+  },
+  "connect:inward": {
+    energizing: ["相手の余地を尊重しながら、関わる量を選べるとき", "急がずに関係を育てる時間があるとき"],
+    blocking: ["反応を待つだけで、自分の気持ちを確かめる機会がないとき", "関係を急いで決めることを求められるとき"],
+  },
+  "connect:adaptive": {
+    energizing: ["相手との距離や反応に合わせて、近づき方を調整できるとき", "無理のない関わり方を選び直せるとき"],
+    blocking: ["関わり方を切り替える理由を説明できないとき", "相手の反応だけを基準に、距離を決め続けるとき"],
+  },
+  "analyze:outward": {
+    energizing: ["必要な情報を確かめ、疑問を言葉にできるとき", "複雑な内容を整理して、判断できる形に変えられるとき"],
+    blocking: ["確認に必要な情報がないまま、即答を求められるとき", "整理の深さを共有できず、結論だけを急がれるとき"],
+  },
+  "analyze:inward": {
+    energizing: ["考えるための静かな余地と、自分のペースが保たれるとき", "理解した内容を十分に確かめてから示せるとき"],
+    blocking: ["分からなさを抱えたまま、すぐに答えを出すことを求められるとき", "考える時間を取れず、判断の根拠を整えられないとき"],
+  },
+  "analyze:adaptive": {
+    energizing: ["確認して進む場面と、いったん動く場面を選べるとき", "情報量に合わせて、質問や持ち帰りを調整できるとき"],
+    blocking: ["考える量を切り替える基準を共有できないとき", "必要な確認と行動の速さを両立できないとき"],
+  },
+  "axis:outward": {
+    energizing: ["大切にしたい基準を言葉にし、改善の方向を示せるとき", "譲れない点と調整できる点を分けて提案できるとき"],
+    blocking: ["意味や基準を確かめないまま、形だけを合わせることを求められるとき", "違和感を示す余地なく、方針への同意を急がれるとき"],
+  },
+  "axis:inward": {
+    energizing: ["大切な基準を内側に保ちながら、納得できる形を考えられるとき", "意味や品質を確かめる時間があるとき"],
+    blocking: ["納得できない方針へ合わせることを急がれるとき", "大切にしたい基準を伝えないまま調整を続けるとき"],
+  },
+  "axis:adaptive": {
+    energizing: ["守る基準と柔軟に調整する部分を選べるとき", "状況に合わせて、重要な価値だけを言葉にできるとき"],
+    blocking: ["何を守り何を調整するかを決められないとき", "基準を切り替える理由を共有できないとき"],
+  },
+};
+
 function mediumCopy(text: string): string {
   return text
     .replace(/(.+)ことが強みです。$/, "$1傾向が比較的見られました。")
@@ -246,6 +302,10 @@ export const ANSWER_PUNCH_LEADS: Record<TypeId, string> = {
 
 export function labelTemplate(type: TypeId, expression: ExpressionId): LabelReportTemplate {
   return LABEL_TEMPLATES[`${type}:${expression}`];
+}
+
+export function conditionTemplate(type: TypeId, expression: ExpressionId): ConditionTemplate {
+  return CONDITION_TEMPLATES[`${type}:${expression}`];
 }
 
 export function resolvedLabel(type: TypeId, expression: ExpressionId): string {
