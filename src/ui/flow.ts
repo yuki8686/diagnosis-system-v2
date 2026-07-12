@@ -1,10 +1,12 @@
 import type { DiagnosisSession } from "./session";
 
-export type UiScreen = "top" | "intro" | "questions" | "resume-blocked" | "restart-confirm" | "result";
-export type NormalUiScreen = Exclude<UiScreen, "restart-confirm">;
+export type UiScreen = "top" | "intro" | "questions" | "confirmation" | "generation-pending" | "resume-blocked" | "restart-confirm" | "result";
+export type NormalUiScreen = Exclude<UiScreen, "restart-confirm" | "generation-pending">;
 
 export function activeUiScreen(screen: UiScreen, restartReturnScreen: NormalUiScreen): NormalUiScreen {
-  return screen === "restart-confirm" ? restartReturnScreen : screen;
+  if (screen === "restart-confirm") return restartReturnScreen;
+  if (screen === "generation-pending") return "confirmation";
+  return screen;
 }
 
 export function shouldScrollWindowToTop(previous: NormalUiScreen | undefined, next: NormalUiScreen): boolean {

@@ -69,7 +69,13 @@ export function buildRoute(session: DiagnosisSession, resolution: TypeResolution
   return buildDiagnosisRoute({ sessionId: session.sessionId, sessionSeed: session.sessionSeed, resolution, comparison, confirmationNeeds, answeredQuestionIds: activeSessionAnswers(session).map((answer) => answer.questionId), previousState, transitionSequence: (previousState?.transitionHistory.at(-1)?.sequence ?? 0) + 1 });
 }
 
-export function finishDiagnosis(session: DiagnosisSession): DiagnosisSession {
+/**
+ * Applies the existing route-level confirmation rules and returns either the
+ * next required question set or a route that is ready for result generation.
+ * It deliberately does not generate a report, so the UI can present its final
+ * confirmation before starting that separate step.
+ */
+export function prepareDiagnosisCompletion(session: DiagnosisSession): DiagnosisSession {
   if (!session.route) throw new Error("Diagnosis route is missing");
   const activeAnswers = activeSessionAnswers(session);
   const questions = questionsForIds(session.route.questionIds);
@@ -77,9 +83,15 @@ export function finishDiagnosis(session: DiagnosisSession): DiagnosisSession {
   const needs = { expression: result.expression.requiresConfirmation, gap: result.gap.pattern === "unclear", utilization: result.utilization.requiresConfirmation };
   const expanded = buildRoute(session, session.route.typeResolution, session.route.comparison, session.route, needs);
   const unanswered = expanded.questionIds.filter((id) => !activeAnswers.some((answer) => answer.questionId === id));
-  if (unanswered.length) return { ...session, route: expanded, currentQuestionIds: unanswered, currentPageIndex: 0 };
-  const finalQuestions = questionsForIds(expanded.questionIds);
-  const finalResult = buildDiagnosisResult({ questions: finalQuestions, answers: activeAnswers, routingState: expanded, expressionIsGeneric: expanded.route === "low-confidence" });
-  const freeReport = generateFreeReport({ result: finalResult, route: expanded, answers: activeAnswers, questions: finalQuestions });
-  return { ...session, route: expanded, freeReport, currentQuestionIds: [], currentPageIndex: 0 };
+  return { ...session, route: expanded, currentQuestionIds: unanswered, currentPageIndex: 0 };
+}
+
+export function finishDiagnosis(session: DiagnosisSession): DiagnosisSession {
+  const prepared = prepareDiagnosisCompletion(session);
+  if (prepared.currentQuestionIds.length) return prepared;
+  const activeAnswers = activeSessionAnswers(prepared);
+  const finalQuestions = questionsForIds(prepared.route!.questionIds);
+  const finalResult = buildDiagnosisResult({ questions: finalQuestions, answers: activeAnswers, routingState: prepared.route!, expressionIsGeneric: prepared.route!.route === "low-confidence" });
+  const freeReport = generateFreeReport({ result: finalResult, route: prepared.route!, answers: activeAnswers, questions: finalQuestions });
+  return { ...prepared, freeReport };
 }

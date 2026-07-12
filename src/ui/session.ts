@@ -24,6 +24,8 @@ export interface DiagnosisSession {
   currentPageIndex: number;
   questionHistory?: QuestionHistoryEntry[];
   invalidatedAnswerQuestionIds?: string[];
+  /** UI-only acknowledgement from the final confirmation screen. */
+  completionConfirmation?: number;
   savedAt: string;
   versions: typeof CURRENT_VERSIONS;
   freeReport?: FreeReport;

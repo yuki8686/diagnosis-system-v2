@@ -4,6 +4,8 @@ import { flattenQuestionBank } from "../src/data/question-bank-contract";
 import { resultLabel } from "../src/report";
 import { buildDiagnosisRoute } from "../src/routing";
 import { aggregateComparison, buildDiagnosisResult, resolveType, scoreBaseTypes } from "../src/scoring";
+import { finishDiagnosis, prepareDiagnosisCompletion } from "../src/ui/engine";
+import { newSession } from "../src/ui/session";
 import type { AnswerRecord, DiagnosisRoute, TypeId, TypeResolution } from "../src/types";
 
 const all = flattenQuestionBank(questionBank);
@@ -84,6 +86,16 @@ const basicRoute = routeFor("basic", baseResolved, {});
 const basicResult = buildDiagnosisResult({ questions: questionsFor(basicRoute), answers: answerRoute(basicRoute), routingState: basicRoute, expressionIsGeneric: false, typeFitSignals: fitSignals });
 assert.equal(basicResult.gap.pairs.length, 5);
 assert.equal(basicResult.utilization.confidence, "high");
+
+const completionSession = { ...newSession(), sessionId: "basic", sessionSeed: "basic-seed", route: basicRoute, answers: answerRoute(basicRoute), currentQuestionIds: [...basicRoute.questionIds] };
+const preparedCompletion = prepareDiagnosisCompletion(completionSession);
+assert.deepEqual(preparedCompletion.currentQuestionIds, [], "a fully answered route is ready for the UI confirmation without generating a report");
+assert.equal(preparedCompletion.freeReport, undefined, "the final confirmation check does not create a free report");
+const finalizedCompletion = finishDiagnosis(completionSession);
+assert.ok(finalizedCompletion.freeReport, "result generation remains available after the UI confirmation handoff");
+const confirmationRequiredSession = { ...completionSession, answers: answerRoute(basicRoute, { DS1: 3, DS2: 3, DS3: 3, "DS-FIT": 5 }) };
+const confirmationRequired = prepareDiagnosisCompletion(confirmationRequiredSession);
+assert.deepEqual(confirmationRequired.currentQuestionIds, ["DS-M1", "DS-M2"], "the UI cannot reach final confirmation while route-level confirmation answers remain");
 const invalidGapRoute = routeFor("invalid-gap", baseResolved, { gap: true });
 assert.throws(() => buildDiagnosisResult({ questions: questionsFor(invalidGapRoute), answers: answerRoute(invalidGapRoute), routingState: invalidGapRoute, expressionIsGeneric: false, typeFitSignals: fitSignals }), /gap.*unclear|direction.*unclear/i);
 

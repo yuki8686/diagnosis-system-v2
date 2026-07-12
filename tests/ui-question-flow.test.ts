@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { questionBank } from "../src/data/question-bank";
 import { comparisonAnswersForPair, resolveCommon, scoreComparison } from "../src/ui/engine";
-import { firstUnansweredQuestionId, nextUnansweredQuestionId, questionNavigationKey, unansweredQuestionIds } from "../src/ui/question-state";
+import { canCreateResults, completionConfirmationAfterAnswer, firstUnansweredQuestionId, nextUnansweredQuestionId, questionNavigationKey, unansweredQuestionIds } from "../src/ui/question-state";
 import { activeSessionAnswers, invalidateDerivedState, newSession, questionHistoryEntry, restorePreviousQuestionHistory, upsertAnswer } from "../src/ui/session";
 import type { AnswerRecord, QuestionDefinition, TypeId } from "../src/types";
 
@@ -46,6 +46,11 @@ assert.deepEqual(unansweredQuestionIds(questionPage, (questionId) => questionId 
 assert.equal(nextUnansweredQuestionId(questionPage, questionPage[0].id, () => undefined), questionPage[1].id, "normal answers target the next unanswered card without requiring a validation error");
 assert.equal(nextUnansweredQuestionId(questionPage, questionPage[1].id, (questionId) => questionId === questionPage[3].id ? undefined : "selected"), questionPage[3].id, "the next unanswered card is calculated after the current answer");
 assert.equal(nextUnansweredQuestionId(questionPage, questionPage[3].id, () => "selected"), undefined, "the final answer does not auto-advance the page");
+assert.equal(completionConfirmationAfterAnswer(5, "A", "A"), 5, "returning to the final page without changing an answer retains its completion confirmation");
+assert.equal(completionConfirmationAfterAnswer(5, "A", "B"), undefined, "changing an answer invalidates the completion confirmation and requires a new selection");
+assert.equal(canCreateResults(undefined, false), false, "the result button remains disabled until the confirmation is selected again");
+assert.equal(canCreateResults(5, false), true, "the result button enables after a confirmation is selected");
+assert.equal(canCreateResults(5, true), false, "the result button disables after its generation handoff begins");
 const comparisonPage = questionBank.comparisons["connect-win"].slice(0, 2);
 const likertPage = questionBank.genericExpression.slice(0, 2);
 assert.equal(nextUnansweredQuestionId(comparisonPage, comparisonPage[0].id, () => undefined), comparisonPage[1].id, "comparison questions use the same next-question calculation");

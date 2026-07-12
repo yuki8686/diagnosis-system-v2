@@ -3,15 +3,16 @@ import { orderQuestionOptions } from "../routing";
 import { resolveType } from "../scoring";
 import type { ChoiceOption, QuestionDefinition, TypeId } from "../types";
 import { toAnswer } from "./adapter";
+import { ConfirmationScreen } from "./components/ConfirmationScreen";
 import { DiagnosisIntro } from "./components/DiagnosisIntro";
 import { QuestionScreen } from "./components/QuestionScreen";
 import { RestartConfirmModal } from "./components/RestartConfirmModal";
 import { TopPage } from "./components/TopPage";
-import { buildRoute, commonQuestions, comparisonAnswersForPair, comparisonQuestions, finishDiagnosis, nextQuestionSetAfterCommon, questionsForIds, resolveCommon, scoreComparison } from "./engine";
+import { buildRoute, commonQuestions, comparisonAnswersForPair, comparisonQuestions, nextQuestionSetAfterCommon, prepareDiagnosisCompletion, questionsForIds, resolveCommon, scoreComparison } from "./engine";
 import { activeUiScreen, hasSavedProgress, initialScreen, nextPageIndex, previousPageIndex, shouldScrollWindowToTop, type NormalUiScreen, type UiScreen } from "./flow";
 import { buildQuestionPages } from "./page-builder";
 import { activeSessionAnswers, invalidateDerivedState, loadSession, newSession, questionHistoryEntry, restorePreviousQuestionHistory, saveSession, STORAGE_KEY, upsertAnswer, type DiagnosisSession } from "./session";
-import { nextUnansweredQuestionId, questionNavigationKey, unansweredQuestionIds as findUnansweredQuestionIds } from "./question-state";
+import { completionConfirmationAfterAnswer, nextUnansweredQuestionId, questionNavigationKey, unansweredQuestionIds as findUnansweredQuestionIds } from "./question-state";
 import "./styles.css";
 
 const loadedSession = loadSession();
@@ -68,7 +69,8 @@ export default function App() {
   const resume = () => { setError(""); setUnansweredQuestionIds([]); setFocusQuestionId(undefined); setScreen(session.freeReport ? "result" : "questions"); };
   const pause = () => { commit(session); setScreen("top"); };
   const answer = (question: QuestionDefinition, option: ChoiceOption) => {
-    const answered = { ...session, answers: upsertAnswer(session.answers, toAnswer(question, option, startedAt.current)), invalidatedAnswerQuestionIds: (session.invalidatedAnswerQuestionIds ?? []).filter((questionId) => questionId !== question.id) };
+    const previousOptionId = activeSessionAnswers(session).find((answer) => answer.questionId === question.id)?.optionId;
+    const answered = { ...session, answers: upsertAnswer(session.answers, toAnswer(question, option, startedAt.current)), invalidatedAnswerQuestionIds: (session.invalidatedAnswerQuestionIds ?? []).filter((questionId) => questionId !== question.id), completionConfirmation: completionConfirmationAfterAnswer(session.completionConfirmation, previousOptionId, option.id) };
     let next: DiagnosisSession = answered;
     if (question.block === "common-type") {
       next = invalidateDerivedState(answered, commonQuestions.map((item) => item.id), "common", false);
@@ -113,10 +115,10 @@ export default function App() {
         moveToQuestionSet({ ...session, typeResolution: resolution, comparisonResolution: comparison, route }, route.questionIds.filter((id) => !activeAnswers.some((answer) => answer.questionId === id)));
         return;
       }
-      const finished = finishDiagnosis(session);
-      if (finished.currentQuestionIds.length) { moveToQuestionSet(finished, finished.currentQuestionIds); return; }
-      commit(finished);
-      if (finished.freeReport) { localStorage.removeItem(STORAGE_KEY); setScreen("result"); }
+      const prepared = prepareDiagnosisCompletion(session);
+      if (prepared.currentQuestionIds.length) { moveToQuestionSet(prepared, prepared.currentQuestionIds); return; }
+      commit(session);
+      setScreen("confirmation");
     } catch (caught) { console.error("Diagnosis question processing failed", caught); setError("回答の処理中に問題が発生しました。ページを再読み込みして、もう一度お試しください。"); }
   };
 
@@ -128,9 +130,15 @@ export default function App() {
     const previous = restorePreviousQuestionHistory(session);
     if (previous) commit(previous);
   };
+  const selectCompletionConfirmation = (value: number) => commit({ ...session, completionConfirmation: value });
+  const reviewAnswers = () => { setError(""); setUnansweredQuestionIds([]); setFocusQuestionId(undefined); setScreen("questions"); };
+  const requestResultGeneration = () => {
+    if (session.completionConfirmation === undefined || screen === "generation-pending") return;
+    setScreen("generation-pending");
+  };
 
   if (activeScreen === "resume-blocked") return <main className="screen intro-screen"><div className="shell"><header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>INNER NOTE</div></header><section className="center-main"><div className="panel blocked-panel"><p className="kicker">VERSION UPDATE</p><h1>保存済みの診断を<br/>再開できません。</h1><p>診断内容が更新されたため、保存済みの回答との互換性を確認できませんでした。安全のため、現在の保存内容は再開せず新しく始めてください。</p><div className="panel-actions"><button className="primary" onClick={() => { localStorage.removeItem(STORAGE_KEY); setSession(newSession()); setScreen("intro"); }}>新しく診断を開始する</button><button className="ghost" onClick={() => setScreen("top")}>トップへ戻る</button></div></div></section></div></main>;
   if (activeScreen === "result" && session.freeReport) return <main className="screen result-placeholder"><div className="shell"><header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>INNER NOTE</div><button className="linkbtn" onClick={() => setScreen("top")}>トップへ戻る</button></header><section className="result-hero"><p className="kicker">YOUR INNER NOTE</p><h1>{session.freeReport.label}</h1><p>{session.freeReport.subtitle}</p><p>{session.freeReport.summary}</p></section><section className="result-placeholder-card"><h2>無料結果画面の全面仕上げは次工程です</h2><p>診断エンジンによる結果データは生成されています。今回の範囲外のため、詳細表示は既存の簡易表示を維持しています。</p></section></div></main>;
 
-  return <>{activeScreen === "top" && <TopPage hasSavedProgress={hasSaved} onStart={() => setScreen("intro")} onResume={resume} onRestart={() => requestRestart("top")}/>} {activeScreen === "intro" && <DiagnosisIntro hasSavedProgress={hasSaved} onStart={hasSaved ? () => requestRestart("intro") : startFresh} onResume={resume} onRestart={() => requestRestart("intro")} onBack={() => setScreen("top")}/>} {activeScreen === "questions" && <QuestionScreen page={page} pageIndex={pageIndex} pageCount={pages.length} selectedOptionId={selectedOptionId} optionsFor={(question) => orderQuestionOptions(question, session.sessionSeed)} onAnswer={answer} onPrevious={goPrevious} onNext={advance} onPause={pause} error={error} unansweredQuestionIds={unansweredQuestionIds} unansweredFocusRequest={unansweredFocusRequest} focusQuestionId={focusQuestionId} focusRequest={focusRequest} navigationKey={questionNavigationKey(pageIndex, session.currentQuestionIds, stageFor(session))} canGoBack={pageIndex > 0 || Boolean(session.questionHistory?.length)}/>} {screen === "restart-confirm" && <RestartConfirmModal onCancel={() => setScreen(restartReturnScreen)} onConfirm={startFresh}/>}</>;
+  return <>{activeScreen === "top" && <TopPage hasSavedProgress={hasSaved} onStart={() => setScreen("intro")} onResume={resume} onRestart={() => requestRestart("top")}/>} {activeScreen === "intro" && <DiagnosisIntro hasSavedProgress={hasSaved} onStart={hasSaved ? () => requestRestart("intro") : startFresh} onResume={resume} onRestart={() => requestRestart("intro")} onBack={() => setScreen("top")}/>} {activeScreen === "questions" && <QuestionScreen page={page} pageIndex={pageIndex} pageCount={pages.length} selectedOptionId={selectedOptionId} optionsFor={(question) => orderQuestionOptions(question, session.sessionSeed)} onAnswer={answer} onPrevious={goPrevious} onNext={advance} onPause={pause} error={error} unansweredQuestionIds={unansweredQuestionIds} unansweredFocusRequest={unansweredFocusRequest} focusQuestionId={focusQuestionId} focusRequest={focusRequest} navigationKey={questionNavigationKey(pageIndex, session.currentQuestionIds, stageFor(session))} canGoBack={pageIndex > 0 || Boolean(session.questionHistory?.length)}/>} {activeScreen === "confirmation" && <ConfirmationScreen selectedValue={session.completionConfirmation} isGenerationPending={screen === "generation-pending"} onSelect={selectCompletionConfirmation} onReview={reviewAnswers} onPause={pause} onCreateResults={requestResultGeneration}/>} {screen === "restart-confirm" && <RestartConfirmModal onCancel={() => setScreen(restartReturnScreen)} onConfirm={startFresh}/>}</>;
 }

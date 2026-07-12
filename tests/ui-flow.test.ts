@@ -27,10 +27,13 @@ assert.equal(nextPageIndex(2, pages.length), 2);
 
 assert.equal(activeUiScreen("restart-confirm", "top"), "top", "opening the restart modal keeps its normal screen identity");
 assert.equal(activeUiScreen("restart-confirm", "intro"), "intro", "the restart modal retains its return screen");
+assert.equal(activeUiScreen("generation-pending", "top"), "confirmation", "the generation handoff retains the confirmation screen until its UI is implemented");
 assert.equal(shouldScrollWindowToTop(undefined, "top"), true, "the initial normal screen is positioned at the top");
 assert.equal(shouldScrollWindowToTop("top", "intro"), true, "top to intro is a normal screen transition");
 assert.equal(shouldScrollWindowToTop("intro", "questions"), true, "intro to questions is a normal screen transition");
 assert.equal(shouldScrollWindowToTop("questions", "top"), true, "questions to top is a normal screen transition");
+assert.equal(shouldScrollWindowToTop("questions", "confirmation"), true, "the final question set scrolls to the confirmation screen top");
+assert.equal(shouldScrollWindowToTop("confirmation", "questions"), true, "reviewing answers scrolls back to the question screen top");
 assert.equal(shouldScrollWindowToTop("result", "top"), true, "result to top is a normal screen transition");
 assert.equal(shouldScrollWindowToTop("resume-blocked", "intro"), true, "resume-blocked to intro is a normal screen transition");
 assert.equal(shouldScrollWindowToTop("top", "top"), false, "opening or cancelling a restart modal does not scroll the background");
