@@ -217,8 +217,30 @@ h1, h2, h3 { font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; }
 .state-card ul { margin: 0; padding-left: 18px; color: #70666d; line-height: 1.9; font-size: 13px; }
 .locked-preview { margin: 18px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .locked-item { position: relative; padding: 16px 42px 16px 16px; border-radius: 17px; background: #faf5f6; border: 1px dashed #d8c7cd; color: #7e727a; font-size: 13px; line-height: 1.7; }
+.locked-item-button { width: 100%; text-align: left; font: inherit; cursor: pointer; transition: .18s ease; }
+.locked-item-button:hover, .locked-item-button:focus-visible { border-color: #c98fa5; background: linear-gradient(145deg, #fff4f6, #f4eff8); color: #665b62; transform: translateY(-1px); box-shadow: 0 10px 24px rgba(88, 58, 72, .08); outline: none; }
 .locked-hint { display: block; margin-top: 5px; font-size: 11px; color: #a17f8c; line-height: 1.55; }
 .locked-icon { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 14px; }
+.paid-card { background: linear-gradient(145deg, #fff8f4, #f7eef4 58%, #f0eff8); text-align: center; }
+.paid-card .eyebrow { font-size: 11px; letter-spacing: .18em; color: #a87386; margin: 0 0 10px; }
+.paid-card p { max-width: 660px; margin-left: auto; margin-right: auto; }
+.purchase-state-note { margin-top: 18px !important; padding: 12px 14px; border-radius: 16px; background: rgba(255, 255, 255, .62); border: 1px solid rgba(169, 99, 125, .12); color: #756a71 !important; font-size: 12px !important; }
+.paid-actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+.paid-actions .primary:disabled { cursor: not-allowed; opacity: .55; transform: none; }
+.deep-report { display: grid; gap: 16px; }
+.deep-report-hero { text-align: center; background: linear-gradient(145deg, #fffaf7, #f7edf3 62%, #efeff8); }
+.deep-report-subtitle { color: #7b6f77 !important; }
+.deep-report-error { text-align: center; }
+.feedback-card { text-align: center; }
+.feedback-scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; max-width: 520px; margin: 24px auto 0; }
+.feedback-btn { min-height: 64px; border: 1px solid #e4d8d5; background: #fffaf8; border-radius: 18px; padding: 12px 8px; cursor: pointer; color: #7a6f76; transition: .18s ease; }
+.feedback-btn small { display: block; margin-top: 3px; }
+.feedback-btn:hover:not(:disabled), .feedback-btn.selected { border-color: #c98fa5; background: linear-gradient(145deg, #fff3f6, #f2eef8); color: #5f555c; }
+.feedback-btn:disabled { cursor: not-allowed; opacity: .65; }
+.feedback-comment { display: grid; gap: 8px; max-width: 520px; margin: 18px auto 0; text-align: left; color: #70666d; font-size: 13px; }
+.feedback-comment textarea { width: 100%; resize: vertical; border: 1px solid #e4d8d5; border-radius: 16px; padding: 12px; color: #5f555c; background: #fffaf8; font: inherit; line-height: 1.7; }
+.feedback-actions { margin-top: 16px; }
+.feedback-actions p { margin-top: 12px !important; font-size: 12px !important; }
 .result-status { width: min(920px, 100%); margin: 0 auto 16px; padding: 17px 19px; border-radius: 20px; background: rgba(255, 253, 251, .92); border: 1px solid rgba(169, 99, 125, .12); box-shadow: 0 12px 34px rgba(88, 58, 72, .05); }
 .result-status strong { display: block; font-size: 14px; margin-bottom: 6px; color: #5d5259; }
 .result-status p { margin: 0; color: #786d74; font-size: 12px; line-height: 1.75; }
@@ -250,6 +272,7 @@ h1, h2, h3 { font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; }
   .page-actions { align-items: stretch; flex-direction: column; }
   .page-actions .primary, .page-actions .secondary { width: 100%; }
   .soft-list, .state-grid, .locked-preview { grid-template-columns: 1fr; }
+  .feedback-scale { gap: 6px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

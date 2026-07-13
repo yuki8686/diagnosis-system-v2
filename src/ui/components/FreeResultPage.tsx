@@ -1,10 +1,18 @@
+import { useRef, useState } from "react";
 import type { FreeReport, TypeResolution } from "../../types";
 import { conditionsViewModel, confidenceLabel, gapViewModel, numberedResultChapters, privateSelfViewModel, publicSelfViewModel, resultStatusBanner, secondaryTypeNote, type ResultChapterKey, visibleFreeReportSection, visibleFreeReportSections } from "../free-result";
+import { LockedReportModal } from "./LockedReportModal";
+import { FeedbackForm } from "./FeedbackForm";
+import { PaidReportOffer } from "./PaidReportOffer";
 import { ShareButton } from "./ShareButton";
 
 interface FreeResultPageProps {
   report: FreeReport;
   typeResolution?: TypeResolution;
+  isCheckoutStarting: boolean;
+  checkoutError?: string;
+  onStartCheckout: () => void;
+  onSaveFeedback: (rating: 1 | 2 | 3 | 4 | 5, comment: string) => Promise<void>;
   onBack: () => void;
   onRestart: () => void;
 }
@@ -17,7 +25,10 @@ function ResultTextSection({ chapter, section }: { chapter: string; section: Ret
   </section>;
 }
 
-export function FreeResultPage({ report, typeResolution, onBack, onRestart }: FreeResultPageProps) {
+export function FreeResultPage({ report, typeResolution, isCheckoutStarting, checkoutError, onStartCheckout, onSaveFeedback, onBack, onRestart }: FreeResultPageProps) {
+  const [lockedTopic, setLockedTopic] = useState<string>();
+  const lockedTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const offerRef = useRef<HTMLElement | null>(null);
   const headline = visibleFreeReportSection(report, "headline");
   const publicSelf = publicSelfViewModel(report);
   const privateSelf = privateSelfViewModel(report);
@@ -40,6 +51,17 @@ export function FreeResultPage({ report, typeResolution, onBack, onRestart }: Fr
   const disclaimer = visibleFreeReportSection(report, "disclaimer");
   const status = resultStatusBanner(report, typeResolution);
   const secondary = secondaryTypeNote(report, typeResolution);
+  const closeLockedReport = () => {
+    setLockedTopic(undefined);
+    window.requestAnimationFrame(() => lockedTriggerRef.current?.focus());
+  };
+  const showPaidOffer = () => {
+    setLockedTopic(undefined);
+    const target = offerRef.current;
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+  };
 
   return <main className="screen active result-page"><div className="shell result-wrap">
     <header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>INNER NOTE</div><button type="button" className="linkbtn" onClick={onBack}>トップへ戻る</button></header>
@@ -85,8 +107,10 @@ export function FreeResultPage({ report, typeResolution, onBack, onRestart }: Fr
         {gap.stateLabel && <p className="gap-state">{gap.stateLabel}</p>}
         {gap.paragraphs.map((paragraph) => <p key={paragraph.id}>{paragraph.text}</p>)}
         <ul className="locked-preview" aria-label="詳細レポートで表示される内容">
-          {gap.lockedItems.map((item) => <li className="locked-item" key={item.title}>
-            <span>{item.title}</span><span className="locked-hint">{item.hint}</span><span className="locked-icon" aria-hidden="true">🔒</span>
+          {gap.lockedItems.map((item) => <li key={item.title}>
+            <button type="button" className="locked-item locked-item-button" aria-label={`${item.title}について詳しいレポートの案内を開く`} onClick={(event) => { lockedTriggerRef.current = event.currentTarget; setLockedTopic(item.title); }}>
+              <span>{item.title}</span><span className="locked-hint">{item.hint}</span><span className="locked-icon" aria-hidden="true">🔒</span>
+            </button>
           </li>)}
         </ul>
       </section>
@@ -110,8 +134,11 @@ export function FreeResultPage({ report, typeResolution, onBack, onRestart }: Fr
         <h2 id="free-result-disclaimer">{disclaimer.title}</h2>
         {disclaimer.paragraphs.map((text, index) => <p key={`${disclaimer.id}-${index}`}>{text}</p>)}
       </section>}
+      <PaidReportOffer offerRef={offerRef} isStarting={isCheckoutStarting} error={checkoutError} onStartCheckout={onStartCheckout}/>
+      <FeedbackForm onSave={onSaveFeedback}/>
     </div>
 
     <div className="share-row result-actions"><ShareButton className="secondary" label="診断ページをシェア"/><button type="button" className="ghost" onClick={onRestart}>もう一度診断する</button></div>
+    {lockedTopic && <LockedReportModal topic={lockedTopic} onClose={closeLockedReport} onShowOffer={showPaidOffer}/>}
   </div></main>;
 }

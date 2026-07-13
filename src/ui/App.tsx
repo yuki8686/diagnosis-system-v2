@@ -6,15 +6,20 @@ import { toAnswer } from "./adapter";
 import { ConfirmationScreen } from "./components/ConfirmationScreen";
 import { DiagnosisIntro } from "./components/DiagnosisIntro";
 import { FreeResultPage } from "./components/FreeResultPage";
+import { PaidReportPage } from "./components/PaidReportPage";
+import { PurchasePendingScreen } from "./components/PurchasePendingScreen";
 import { LoadingScreen } from "./components/LoadingScreen";
+import { LegalNoticePage } from "./components/LegalNoticePage";
 import { QuestionScreen } from "./components/QuestionScreen";
 import { RestartConfirmModal } from "./components/RestartConfirmModal";
 import { TopPage } from "./components/TopPage";
+import { TermsPage } from "./components/TermsPage";
 import { buildRoute, commonQuestions, comparisonAnswersForPair, comparisonQuestions, finishDiagnosis, nextQuestionSetAfterCommon, prepareDiagnosisCompletion, questionsForIds, resolveCommon, scoreComparison } from "./engine";
 import { activeUiScreen, hasSavedProgress, initialScreen, nextPageIndex, previousPageIndex, RESULT_LOADING_STEP_MS, RESULT_LOADING_TITLES, shouldScrollWindowToTop, shouldStartResultGeneration, type NormalUiScreen, type UiScreen } from "./flow";
 import { buildQuestionPages } from "./page-builder";
 import { activeSessionAnswers, invalidateDerivedState, loadSession, newSession, questionHistoryEntry, restorePreviousQuestionHistory, saveSession, STORAGE_KEY, upsertAnswer, type DiagnosisSession } from "./session";
 import { completionConfirmationAfterAnswer, nextUnansweredQuestionId, questionNavigationKey, unansweredQuestionIds as findUnansweredQuestionIds } from "./question-state";
+import { beginCheckout, loadServerResultReference, purchaseStatus, saveFeedbackToServer } from "./purchase-client";
 import "./styles.css";
 
 const loadedSession = loadSession();
@@ -32,6 +37,9 @@ export default function App() {
   const [generationError, setGenerationError] = useState<string>();
   const [generationAttempt, setGenerationAttempt] = useState(0);
   const [generationTitleIndex, setGenerationTitleIndex] = useState(0);
+  const [checkoutState, setCheckoutState] = useState<"idle" | "starting">("idle");
+  const [checkoutError, setCheckoutError] = useState<string>();
+  const [purchasePendingError, setPurchasePendingError] = useState<string>();
   const startedAt = useRef(Date.now());
   const previousActiveScreen = useRef<NormalUiScreen | undefined>(undefined);
   const generationResultRef = useRef<{ sessionId?: string; finished?: DiagnosisSession }>({});
@@ -42,11 +50,35 @@ export default function App() {
   const page = pages[pageIndex] ?? [];
   const activeScreen = activeUiScreen(screen, restartReturnScreen);
   const activeAnswers = activeSessionAnswers(session);
+  const reportAccessToken = typeof window === "undefined" ? undefined : window.location.pathname.match(/^\/report\/([A-Za-z0-9_-]{43})$/)?.[1];
+  const legalPath = typeof window !== "undefined" && window.location.pathname === "/legal";
+  const termsPath = typeof window !== "undefined" && window.location.pathname === "/terms";
+  const checkoutResultId = typeof window === "undefined" ? undefined : new URLSearchParams(window.location.search).get("checkout") === "success" ? new URLSearchParams(window.location.search).get("resultId") ?? undefined : undefined;
 
   useEffect(() => {
     if (shouldScrollWindowToTop(previousActiveScreen.current, activeScreen)) window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     previousActiveScreen.current = activeScreen;
   }, [activeScreen]);
+
+  useEffect(() => {
+    if (!checkoutResultId || !/^[0-9a-f-]{36}$/i.test(checkoutResultId)) return;
+    const reference = loadServerResultReference(session.sessionId);
+    if (!reference || reference.resultId !== checkoutResultId) { setPurchasePendingError("購入状況を確認できません。購入に使用したブラウザで、決済完了後の画面を開いてください。"); return; }
+    let active = true;
+    let attempts = 0;
+    const poll = async () => {
+      try {
+        const status = await purchaseStatus(reference);
+        if (!active) return;
+        if (status === "paid") { window.location.assign(`/report/${reference.accessToken}`); return; }
+        if (status === "generation-failed" || status === "expired") { setPurchasePendingError("専用レポートを準備できませんでした。お問い合わせください。"); return; }
+      } catch { if (active && attempts >= 11) setPurchasePendingError("購入状況を確認できません。時間をおいて、この画面を開き直してください。"); }
+      attempts += 1;
+      if (active && attempts < 12) window.setTimeout(poll, 3000);
+    };
+    void poll();
+    return () => { active = false; };
+  }, [checkoutResultId, session.sessionId]);
 
   useEffect(() => {
     if (screen !== "generation-pending" || session.freeReport) return;
@@ -182,8 +214,20 @@ export default function App() {
     setGenerationAttempt((value) => value + 1);
   };
 
+  const startCheckout = async () => {
+    if (checkoutState === "starting") return;
+    setCheckoutState("starting"); setCheckoutError(undefined);
+    try { await beginCheckout(session); }
+    catch (caught) { setCheckoutError(caught instanceof Error ? caught.message : "購入手続きを開始できませんでした。"); setCheckoutState("idle"); }
+  };
+  const saveFeedback = (rating: 1 | 2 | 3 | 4 | 5, comment: string) => saveFeedbackToServer(session, rating, comment);
+
+  if (reportAccessToken) return <PaidReportPage accessToken={reportAccessToken}/>;
+  if (legalPath) return <LegalNoticePage/>;
+  if (termsPath) return <TermsPage/>;
+  if (checkoutResultId) return <PurchasePendingScreen error={purchasePendingError}/>;
   if (activeScreen === "resume-blocked") return <main className="screen intro-screen"><div className="shell"><header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>INNER NOTE</div></header><section className="center-main"><div className="panel blocked-panel"><p className="kicker">VERSION UPDATE</p><h1>保存済みの診断を<br/>再開できません。</h1><p>診断内容が更新されたため、保存済みの回答との互換性を確認できませんでした。安全のため、現在の保存内容は再開せず新しく始めてください。</p><div className="panel-actions"><button className="primary" onClick={() => { localStorage.removeItem(STORAGE_KEY); setSession(newSession()); setScreen("intro"); }}>新しく診断を開始する</button><button className="ghost" onClick={() => setScreen("top")}>トップへ戻る</button></div></div></section></div></main>;
-  if (activeScreen === "result" && session.freeReport) return <><FreeResultPage report={session.freeReport} typeResolution={session.route?.typeResolution} onBack={() => setScreen("top")} onRestart={() => requestRestart("result")}/>{screen === "restart-confirm" && <RestartConfirmModal onCancel={() => setScreen(restartReturnScreen)} onConfirm={startFresh}/>}</>;
+  if (activeScreen === "result" && session.freeReport) return <><FreeResultPage report={session.freeReport} typeResolution={session.route?.typeResolution} isCheckoutStarting={checkoutState === "starting"} checkoutError={checkoutError} onStartCheckout={startCheckout} onSaveFeedback={saveFeedback} onBack={() => setScreen("top")} onRestart={() => requestRestart("result")}/>{screen === "restart-confirm" && <RestartConfirmModal onCancel={() => setScreen(restartReturnScreen)} onConfirm={startFresh}/>}</>;
 
   return <>{activeScreen === "top" && <TopPage hasSavedProgress={hasSaved} onStart={() => setScreen("intro")} onResume={resume} onRestart={() => requestRestart("top")}/>} {activeScreen === "intro" && <DiagnosisIntro hasSavedProgress={hasSaved} onStart={hasSaved ? () => requestRestart("intro") : startFresh} onResume={resume} onRestart={() => requestRestart("intro")} onBack={() => setScreen("top")}/>} {activeScreen === "questions" && <QuestionScreen page={page} pageIndex={pageIndex} pageCount={pages.length} selectedOptionId={selectedOptionId} optionsFor={(question) => orderQuestionOptions(question, session.sessionSeed)} onAnswer={answer} onPrevious={goPrevious} onNext={advance} onPause={pause} error={error} unansweredQuestionIds={unansweredQuestionIds} unansweredFocusRequest={unansweredFocusRequest} focusQuestionId={focusQuestionId} focusRequest={focusRequest} navigationKey={questionNavigationKey(pageIndex, session.currentQuestionIds, stageFor(session))} canGoBack={pageIndex > 0 || Boolean(session.questionHistory?.length)}/>} {activeScreen === "confirmation" && <ConfirmationScreen selectedValue={session.completionConfirmation} isGenerationPending={screen === "generation-pending"} onSelect={selectCompletionConfirmation} onReview={reviewAnswers} onPause={pause} onCreateResults={requestResultGeneration}/>} {activeScreen === "generation-pending" && <LoadingScreen title={RESULT_LOADING_TITLES[generationTitleIndex]} error={generationError} onRetry={retryResultGeneration}/>} {screen === "restart-confirm" && <RestartConfirmModal onCancel={() => setScreen(restartReturnScreen)} onConfirm={startFresh}/>}</>;
 }
