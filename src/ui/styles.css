@@ -206,6 +206,19 @@ h1, h2, h3 { font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; }
 .result-section h2 { font-size: clamp(25px, 3vw, 34px); font-weight: 500; margin: 0 0 16px; line-height: 1.45; }
 .result-section p { margin: 0; color: #70666d; line-height: 1.95; font-size: 14px; }
 .result-section p + p { margin-top: 14px; }
+.soft-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 20px 0 0; padding: 0; list-style: none; }
+.soft-item { padding: 15px 16px; border-radius: 17px; background: #fff8f6; border: 1px solid #eadfdb; color: #645a61; font-size: 13px; line-height: 1.7; }
+.inside-card { margin-top: 20px; padding: 22px; border-radius: 22px; background: linear-gradient(145deg, #fff7f8, #f4f0f8); border: 1px solid rgba(169, 99, 125, .12); }
+.inside-card h3 { display: block; font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; font-size: 21px; font-weight: 500; margin: 0 0 10px; }
+.gap-state { display: inline-block; margin: 0 0 16px !important; padding: 9px 12px; border-radius: 999px; background: #f8edf2; color: #765967 !important; font-size: 12px !important; line-height: 1.6 !important; }
+.state-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+.state-card { padding: 22px; border-radius: 22px; border: 1px solid #eadfdb; background: #fffaf8; }
+.state-card h3 { margin: 0 0 14px; font-size: 18px; font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; font-weight: 500; line-height: 1.55; }
+.state-card ul { margin: 0; padding-left: 18px; color: #70666d; line-height: 1.9; font-size: 13px; }
+.locked-preview { margin: 18px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.locked-item { position: relative; padding: 16px 42px 16px 16px; border-radius: 17px; background: #faf5f6; border: 1px dashed #d8c7cd; color: #7e727a; font-size: 13px; line-height: 1.7; }
+.locked-hint { display: block; margin-top: 5px; font-size: 11px; color: #a17f8c; line-height: 1.55; }
+.locked-icon { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 14px; }
 .result-status { width: min(920px, 100%); margin: 0 auto 16px; padding: 17px 19px; border-radius: 20px; background: rgba(255, 253, 251, .92); border: 1px solid rgba(169, 99, 125, .12); box-shadow: 0 12px 34px rgba(88, 58, 72, .05); }
 .result-status strong { display: block; font-size: 14px; margin-bottom: 6px; color: #5d5259; }
 .result-status p { margin: 0; color: #786d74; font-size: 12px; line-height: 1.75; }
@@ -236,6 +249,7 @@ h1, h2, h3 { font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; }
   .likert { gap: 4px; }
   .page-actions { align-items: stretch; flex-direction: column; }
   .page-actions .primary, .page-actions .secondary { width: 100%; }
+  .soft-list, .state-grid, .locked-preview { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

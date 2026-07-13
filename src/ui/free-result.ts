@@ -1,5 +1,5 @@
 import { TYPE_LABELS } from "../constants";
-import type { Confidence, FreeReport, ReportSectionId, TypeResolution } from "../types";
+import type { Confidence, FreeGapState, FreeReport, FreeReportDisplayItem, ReportSectionId, TypeResolution } from "../types";
 
 export interface VisibleFreeReportSection {
   id: ReportSectionId;
@@ -13,7 +13,52 @@ export interface ResultStatusBanner {
   body: string;
 }
 
+export interface VisibleFreeReportDetailItem {
+  id: string;
+  text: string;
+}
+
+export interface PublicSelfViewModel {
+  traits: VisibleFreeReportDetailItem[];
+  misunderstanding?: VisibleFreeReportDetailItem;
+}
+
+export interface PrivateSelfViewModel {
+  paragraphs: VisibleFreeReportDetailItem[];
+}
+
+export interface GapViewModel {
+  stateLabel?: string;
+  paragraphs: VisibleFreeReportDetailItem[];
+  lockedItems: Array<{ title: string; hint: string }>;
+}
+
+export interface ConditionsViewModel {
+  energizing: VisibleFreeReportDetailItem[];
+  blocking: VisibleFreeReportDetailItem[];
+}
+
+export type ResultChapterKey = "core" | "expression" | "public-self" | "private-self" | "gap" | "condition" | "observation";
+
+export interface NumberedResultChapter {
+  key: ResultChapterKey;
+  chapter: string;
+}
+
 const bodySectionIds = ["core_desire", "expression", "observation"] as const;
+const lockedGapItems = [
+  { title: "ズレが強く出やすい場面", hint: "詳細レポートで表示" },
+  { title: "無意識に取りやすい防衛反応", hint: "詳細レポートで表示" },
+] as const;
+const resultChapterLabels: Record<ResultChapterKey, string> = {
+  core: "CORE",
+  expression: "EXPRESSION",
+  "public-self": "PUBLIC SELF",
+  "private-self": "PRIVATE SELF",
+  gap: "GAP",
+  condition: "CONDITION",
+  observation: "OBSERVATION",
+};
 
 export function confidenceLabel(confidence: Confidence): string {
   const label: Record<Confidence, string> = {
@@ -29,11 +74,82 @@ export function visibleFreeReportSection(report: FreeReport, id: ReportSectionId
   return section ? { id: section.id, title: section.title, paragraphs: section.paragraphs.map((paragraph) => paragraph.text) } : undefined;
 }
 
-export function visibleFreeReportSections(report: FreeReport): VisibleFreeReportSection[] {
+export function visibleFreeReportSections(report: FreeReport, options: { includeExpression?: boolean } = {}): VisibleFreeReportSection[] {
+  const includeExpression = options.includeExpression ?? true;
   return bodySectionIds.flatMap((id) => {
+    if (id === "expression" && !includeExpression) return [];
     const section = visibleFreeReportSection(report, id);
     return section ? [section] : [];
   });
+}
+
+export function numberedResultChapters(keys: readonly ResultChapterKey[]): NumberedResultChapter[] {
+  return keys.map((key, index) => ({
+    key,
+    chapter: `${String(index + 1).padStart(2, "0")} / ${resultChapterLabels[key]}`,
+  }));
+}
+
+function visibleDetailItem(item: FreeReportDisplayItem | undefined): VisibleFreeReportDetailItem | undefined {
+  if (!item || !item.id || !item.text.trim()) return undefined;
+  return { id: item.id, text: item.text };
+}
+
+function visibleDetailItems(items: readonly FreeReportDisplayItem[] | undefined): VisibleFreeReportDetailItem[] {
+  return (items ?? []).flatMap((item) => {
+    const visible = visibleDetailItem(item);
+    return visible ? [visible] : [];
+  });
+}
+
+export function publicSelfViewModel(report: FreeReport): PublicSelfViewModel | undefined {
+  const publicSelf = report.details?.publicSelf;
+  if (!publicSelf) return undefined;
+
+  const traits = visibleDetailItems(publicSelf.traits);
+  if (traits.length === 0) return undefined;
+  return {
+    traits,
+    misunderstanding: visibleDetailItem(publicSelf.misunderstanding),
+  };
+}
+
+export function privateSelfViewModel(report: FreeReport): PrivateSelfViewModel | undefined {
+  const privateSelf = report.details?.privateSelf;
+  if (!privateSelf) return undefined;
+
+  const paragraphs = visibleDetailItems(privateSelf.paragraphs);
+  return paragraphs.length > 0 ? { paragraphs } : undefined;
+}
+
+export function gapStateLabel(state: FreeGapState): string {
+  const labels: Record<FreeGapState, string> = {
+    aligned: "内側と対人場面の回答は比較的近い",
+    light: "小さなズレが見られる",
+    medium: "ある程度のズレが見られる",
+    strong: "はっきりしたズレが見られる",
+    mixed: "場面によって方向が入れ替わる",
+    unclear: "一方向にはまとめにくい",
+  };
+  return labels[state];
+}
+
+export function gapViewModel(report: FreeReport): GapViewModel {
+  const gap = report.details?.gap;
+  return {
+    stateLabel: gap ? gapStateLabel(gap.state) : undefined,
+    paragraphs: visibleDetailItems(gap?.paragraphs),
+    lockedItems: lockedGapItems.map((item) => ({ ...item })),
+  };
+}
+
+export function conditionsViewModel(report: FreeReport): ConditionsViewModel | undefined {
+  const conditions = report.details?.conditions;
+  if (!conditions) return undefined;
+
+  const energizing = visibleDetailItems(conditions.energizing);
+  const blocking = visibleDetailItems(conditions.blocking);
+  return energizing.length > 0 || blocking.length > 0 ? { energizing, blocking } : undefined;
 }
 
 export function resultStatusBanner(report: FreeReport, resolution?: TypeResolution): ResultStatusBanner | undefined {
@@ -63,13 +179,4 @@ export function secondaryTypeNote(report: FreeReport, resolution?: TypeResolutio
     return `${prefix}：${TYPE_LABELS[resolution.secondary]}`;
   }
   return undefined;
-}
-
-export function resultSectionChapter(id: ReportSectionId): string {
-  const chapters: Partial<Record<ReportSectionId, string>> = {
-    core_desire: "01 / CORE",
-    expression: "02 / EXPRESSION",
-    observation: "03 / OBSERVATION",
-  };
-  return chapters[id] ?? "NOTE";
 }

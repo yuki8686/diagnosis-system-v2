@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import { questionBank } from "../src/data/question-bank";
 import { toAnswer } from "../src/ui/adapter";
 import { activeUiScreen, hasSavedProgress, initialScreen, isResultLoadingComplete, nextPageIndex, previousPageIndex, RESULT_LOADING_STEP_MS, RESULT_LOADING_TITLES, resultLoadingTitleIndex, shouldScrollWindowToTop, shouldStartResultGeneration } from "../src/ui/flow";
-import { confidenceLabel, resultStatusBanner, secondaryTypeNote, visibleFreeReportSection, visibleFreeReportSections } from "../src/ui/free-result";
+import { conditionsViewModel, confidenceLabel, gapStateLabel, gapViewModel, numberedResultChapters, privateSelfViewModel, publicSelfViewModel, resultStatusBanner, secondaryTypeNote, visibleFreeReportSection, visibleFreeReportSections } from "../src/ui/free-result";
 import { buildQuestionPages } from "../src/ui/page-builder";
 import { newSession, upsertAnswer } from "../src/ui/session";
 import type { FreeReport } from "../src/types";
@@ -73,6 +73,66 @@ assert.deepEqual(visibleFreeReportSections(report).map((section) => section.id),
 assert.equal(visibleFreeReportSections(report).some((section) => section.id === "headline"), false, "the headline is not repeated in the result body");
 assert.equal(visibleFreeReportSection({ ...report, sections: [] }, "observation"), undefined, "a missing section does not crash the result view model");
 assert.equal(JSON.stringify(visibleFreeReportSections(report)).includes("expression-paragraph"), false, "visible section content omits internal paragraph IDs and evidence");
+assert.deepEqual(numberedResultChapters(["core", "expression", "gap", "observation"]).map((item) => item.chapter), ["01 / CORE", "02 / EXPRESSION", "03 / GAP", "04 / OBSERVATION"], "chapter numbers stay consecutive when optional detail sections are absent");
+assert.deepEqual(numberedResultChapters(["core", "public-self", "private-self", "gap", "condition", "observation"]).map((item) => item.chapter), ["01 / CORE", "02 / PUBLIC SELF", "03 / PRIVATE SELF", "04 / GAP", "05 / CONDITION", "06 / OBSERVATION"], "chapter numbers include every visible detail section in order");
+assert.deepEqual(numberedResultChapters(["core", "public-self", "gap", "condition", "observation"]).map((item) => item.chapter), ["01 / CORE", "02 / PUBLIC SELF", "03 / GAP", "04 / CONDITION", "05 / OBSERVATION"], "chapter numbers do not skip when PRIVATE SELF is absent");
+assert.deepEqual(numberedResultChapters(["core", "public-self", "private-self", "gap", "observation"]).map((item) => item.chapter), ["01 / CORE", "02 / PUBLIC SELF", "03 / PRIVATE SELF", "04 / GAP", "05 / OBSERVATION"], "chapter numbers do not skip when CONDITION is absent");
+
+const detailItem = (id: string, text: string) => ({
+  id,
+  text,
+  anchorIds: ["anchor-internal"],
+  evidence: { block: "gap" as const, evidenceLevel: "inferred" as const, sourceQuestionIds: ["question-internal"], sourceScores: { internal: 1 }, confidence: "medium" as const, wordingStrength: "soft" as const, scenarioScope: "general" as const },
+});
+const detailedReport = {
+  ...report,
+  details: {
+    publicSelf: {
+      traits: [detailItem("trait-one", "人から見える特徴 1"), detailItem("trait-two", "人から見える特徴 2")],
+      misunderstanding: detailItem("misunderstanding", "誤解されやすい点の本文"),
+    },
+    privateSelf: { paragraphs: [detailItem("private-one", "内側の本文")] },
+    gap: { state: "medium" as const, paragraphs: [detailItem("gap-one", "ズレの本文")] },
+    conditions: {
+      energizing: [detailItem("energizing-one", "力を出しやすい条件")],
+      blocking: [detailItem("blocking-one", "止まりやすい条件")],
+    },
+  },
+} as FreeReport;
+assert.deepEqual(publicSelfViewModel(detailedReport)?.traits.map((item) => item.text), ["人から見える特徴 1", "人から見える特徴 2"], "PUBLIC SELF creates a display model when detail data exists");
+assert.equal(publicSelfViewModel({ ...detailedReport, details: { ...detailedReport.details, publicSelf: undefined } }), undefined, "PUBLIC SELF stays hidden without detail data");
+assert.equal(visibleFreeReportSections(detailedReport, { includeExpression: !publicSelfViewModel(detailedReport) }).some((section) => section.id === "expression"), false, "PUBLIC SELF suppresses the overlapping expression section");
+assert.equal(visibleFreeReportSections({ ...detailedReport, details: { ...detailedReport.details, publicSelf: undefined } }, { includeExpression: !publicSelfViewModel({ ...detailedReport, details: { ...detailedReport.details, publicSelf: undefined } }) }).some((section) => section.id === "expression"), true, "expression remains available when PUBLIC SELF is absent");
+const emptyPublicSelfReport = {
+  ...detailedReport,
+  details: { ...detailedReport.details, publicSelf: { traits: [] } },
+} as FreeReport;
+assert.equal(publicSelfViewModel(emptyPublicSelfReport), undefined, "PUBLIC SELF stays hidden when its traits are empty");
+assert.equal(visibleFreeReportSections(emptyPublicSelfReport, { includeExpression: !publicSelfViewModel(emptyPublicSelfReport) }).some((section) => section.id === "expression"), true, "expression remains visible when PUBLIC SELF has no displayable traits");
+const blankPublicSelfReport = {
+  ...detailedReport,
+  details: { ...detailedReport.details, publicSelf: { traits: [detailItem("blank-trait", "   ")] } },
+} as FreeReport;
+assert.equal(publicSelfViewModel(blankPublicSelfReport), undefined, "PUBLIC SELF stays hidden when its traits are blank");
+assert.equal(visibleFreeReportSections(blankPublicSelfReport, { includeExpression: !publicSelfViewModel(blankPublicSelfReport) }).some((section) => section.id === "expression"), true, "expression remains visible when PUBLIC SELF has only blank traits");
+assert.deepEqual(privateSelfViewModel(detailedReport)?.paragraphs.map((item) => item.text), ["内側の本文"], "PRIVATE SELF is shown only from its detail data");
+assert.equal(privateSelfViewModel({ ...detailedReport, details: { ...detailedReport.details, privateSelf: undefined } }), undefined, "PRIVATE SELF stays hidden when no detail data exists");
+assert.deepEqual([
+  gapStateLabel("aligned"),
+  gapStateLabel("light"),
+  gapStateLabel("medium"),
+  gapStateLabel("strong"),
+  gapStateLabel("mixed"),
+  gapStateLabel("unclear"),
+], ["内側と対人場面の回答は比較的近い", "小さなズレが見られる", "ある程度のズレが見られる", "はっきりしたズレが見られる", "場面によって方向が入れ替わる", "一方向にはまとめにくい"], "all GAP states use customer-facing Japanese labels");
+assert.deepEqual(gapViewModel(detailedReport).lockedItems, [
+  { title: "ズレが強く出やすい場面", hint: "詳細レポートで表示" },
+  { title: "無意識に取りやすい防衛反応", hint: "詳細レポートで表示" },
+], "GAP locked items use fixed labels without result-specific previews");
+assert.deepEqual(conditionsViewModel(detailedReport)?.energizing.map((item) => item.text), ["力を出しやすい条件"], "CONDITION creates a display model when detail data exists");
+assert.equal(conditionsViewModel({ ...detailedReport, details: { ...detailedReport.details, conditions: undefined } }), undefined, "CONDITION stays hidden without detail data");
+assert.equal(JSON.stringify({ public: publicSelfViewModel(detailedReport), private: privateSelfViewModel(detailedReport), gap: gapViewModel(detailedReport), conditions: conditionsViewModel(detailedReport) }).includes("question-internal"), false, "detail display models omit internal evidence and source question IDs");
+assert.doesNotThrow(() => gapViewModel({ ...detailedReport, details: undefined } as unknown as FreeReport), "missing detail data does not crash the GAP display model");
 assert.equal(confidenceLabel("high"), "判定の確からしさ：高い");
 assert.equal(confidenceLabel("medium"), "判定の確からしさ：中程度");
 assert.equal(confidenceLabel("low"), "判定の確からしさ：参考");
