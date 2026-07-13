@@ -4,6 +4,7 @@ import { toAnswer } from "../src/ui/adapter";
 import { activeUiScreen, hasSavedProgress, initialScreen, isResultLoadingComplete, nextPageIndex, previousPageIndex, RESULT_LOADING_STEP_MS, RESULT_LOADING_TITLES, resultLoadingTitleIndex, shouldScrollWindowToTop, shouldStartResultGeneration } from "../src/ui/flow";
 import { conditionsViewModel, confidenceLabel, gapStateLabel, gapViewModel, numberedResultChapters, privateSelfViewModel, publicSelfViewModel, resultStatusBanner, secondaryTypeNote, visibleFreeReportSection, visibleFreeReportSections } from "../src/ui/free-result";
 import { buildQuestionPages } from "../src/ui/page-builder";
+import { lockedReportModalContent, lockedReportOffer } from "../src/ui/locked-report";
 import { newSession, upsertAnswer } from "../src/ui/session";
 import type { FreeReport } from "../src/types";
 
@@ -77,6 +78,11 @@ assert.deepEqual(numberedResultChapters(["core", "expression", "gap", "observati
 assert.deepEqual(numberedResultChapters(["core", "public-self", "private-self", "gap", "condition", "observation"]).map((item) => item.chapter), ["01 / CORE", "02 / PUBLIC SELF", "03 / PRIVATE SELF", "04 / GAP", "05 / CONDITION", "06 / OBSERVATION"], "chapter numbers include every visible detail section in order");
 assert.deepEqual(numberedResultChapters(["core", "public-self", "gap", "condition", "observation"]).map((item) => item.chapter), ["01 / CORE", "02 / PUBLIC SELF", "03 / GAP", "04 / CONDITION", "05 / OBSERVATION"], "chapter numbers do not skip when PRIVATE SELF is absent");
 assert.deepEqual(numberedResultChapters(["core", "public-self", "private-self", "gap", "observation"]).map((item) => item.chapter), ["01 / CORE", "02 / PUBLIC SELF", "03 / PRIVATE SELF", "04 / GAP", "05 / OBSERVATION"], "chapter numbers do not skip when CONDITION is absent");
+const lockedModal = lockedReportModalContent("ズレが強く出やすい場面");
+assert.ok(lockedModal.title.includes("ズレが強く出やすい場面"), "each locked topic produces a modal title");
+assert.ok(lockedModal.body.includes("詳しいレポート"), "locked modal explains the detailed report without a topic preview");
+assert.equal(JSON.stringify(lockedModal).includes("anchorIds"), false, "locked modal copy omits internal detail data");
+assert.equal(lockedReportOffer.body.includes("sourceQuestionIds"), false, "paid offer copy omits internal report data");
 
 const detailItem = (id: string, text: string) => ({
   id,
