@@ -1,5 +1,4 @@
 import { strict as assert } from "node:assert";
-import { TYPE_LABELS } from "../src/constants";
 import { flattenQuestionBank } from "../src/data/question-bank-contract";
 import { questionBank } from "../src/data/question-bank";
 import { generateFreeReport, generatePaidReport, resultLabel } from "../src/report";
@@ -110,7 +109,7 @@ const tiedPaid = generatePaidReport(tiedInput, tiedFree);
 assert.equal(tiedInput.route.routeLocked, true);
 assert.equal(tiedInput.route.route, "low-confidence");
 assert.equal(tiedFree.route, "low_confidence");
-assert.equal(tiedPaid.label, `${TYPE_LABELS.win} × ${TYPE_LABELS.connect}`);
+assert.equal(tiedPaid.label, "戦車 × 太陽", "a low-confidence result lists the two Arcana candidates without changing the route");
 assert.doesNotMatch(tiedPaid.label, /・/);
 const comparisonParagraph = tiedPaid.sections.find((section) => section.id === "core_desire")!.paragraphs.find((paragraph) => paragraph.id === "low-comparison-answer")!;
 assert.ok(comparisonParagraph.evidence.sourceQuestionIds[0].startsWith("VS-WC-"));

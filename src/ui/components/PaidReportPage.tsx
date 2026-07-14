@@ -23,5 +23,5 @@ export function PaidReportPage({ accessToken }: { accessToken: string }) {
       .catch(() => { if (active) setError("レポートを表示できません。時間をおいてもう一度お試しください。"); });
     return () => { active = false; };
   }, [accessToken]);
-  return <main className="screen active result-page"><div className="shell result-wrap"><header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>INNER NOTE</div></header>{report ? <DeepReportSection report={report}/> : <section className="result-section" aria-live="polite"><p className="eyebrow">DEEP REPORT</p><h1>{error ?? "詳しいレポートを読み込んでいます"}</h1>{!error && <p>しばらくお待ちください。</p>}</section>}</div></main>;
+  return <main className="screen active result-page"><div className="shell result-wrap"><header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>本音キャラ診断</div></header>{report ? <DeepReportSection report={report}/> : <section className="result-section" aria-live="polite"><p className="eyebrow">DEEP REPORT</p><h1>{error ?? "詳しいレポートを読み込んでいます"}</h1>{!error && <p>しばらくお待ちください。</p>}</section>}</div></main>;
 }

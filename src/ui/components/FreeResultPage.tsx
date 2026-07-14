@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { FreeReport, TypeResolution } from "../../types";
-import { conditionsViewModel, confidenceLabel, gapViewModel, numberedResultChapters, privateSelfViewModel, publicSelfViewModel, resultStatusBanner, secondaryTypeNote, type ResultChapterKey, visibleFreeReportSection, visibleFreeReportSections } from "../free-result";
+import { DIAGNOSIS_DISPLAY_NAME } from "../brand";
+import { characterHeroViewModel, conditionsViewModel, confidenceLabel, gapViewModel, numberedResultChapters, privateSelfViewModel, publicSelfViewModel, resultStatusBanner, secondaryTypeNote, type ResultChapterKey, visibleFreeReportSection, visibleFreeReportSections } from "../free-result";
 import { LockedReportModal } from "./LockedReportModal";
 import { FeedbackForm } from "./FeedbackForm";
 import { PaidReportOffer } from "./PaidReportOffer";
@@ -30,6 +31,7 @@ export function FreeResultPage({ report, typeResolution, isCheckoutStarting, che
   const lockedTriggerRef = useRef<HTMLButtonElement | null>(null);
   const offerRef = useRef<HTMLElement | null>(null);
   const headline = visibleFreeReportSection(report, "headline");
+  const characterHero = characterHeroViewModel(report);
   const publicSelf = publicSelfViewModel(report);
   const privateSelf = privateSelfViewModel(report);
   const gap = gapViewModel(report);
@@ -64,17 +66,20 @@ export function FreeResultPage({ report, typeResolution, isCheckoutStarting, che
   };
 
   return <main className="screen active result-page"><div className="shell result-wrap">
-    <header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>INNER NOTE</div><button type="button" className="linkbtn" onClick={onBack}>トップへ戻る</button></header>
+    <header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>{DIAGNOSIS_DISPLAY_NAME}</div><button type="button" className="linkbtn" onClick={onBack}>トップへ戻る</button></header>
 
     {status && <section className={`result-status show ${status.tone}`} role="status" aria-live="polite"><strong>{status.title}</strong><p>{status.body}</p></section>}
 
     <section className="result-hero" aria-labelledby="free-result-title">
-      <p className="kicker">YOUR INNER NOTE</p>
-      <p className="result-type-label">あなたのタイプ</p>
-      <h1 id="free-result-title">{report.label}</h1>
-      <p className="result-subtype">{report.subtitle}</p>
-      {headline?.paragraphs.map((text, index) => <p className="result-quote" key={`${headline.id}-${index}`}>{text}</p>)}
-      <p className="result-summary">{report.summary}</p>
+      <p className="kicker">{DIAGNOSIS_DISPLAY_NAME}</p>
+      <p className="result-type-label">{characterHero?.categoryLabel ?? "あなたの本音キャラ候補は"}</p>
+      <h1 id="free-result-title">{characterHero?.characterName ?? report.label}</h1>
+      {(characterHero?.headlines ?? headline?.paragraphs ?? []).map((text, index) => <p className="result-quote" key={`character-headline-${index}`}>{text}</p>)}
+      {characterHero && <dl className="character-result-details">
+        <div><dt>本音の核</dt><dd>{characterHero.coreDesire}</dd></div>
+        <div><dt>表れ方</dt><dd>{characterHero.expressionDescription}</dd></div>
+      </dl>}
+      {report.route === "low_confidence" && <p className="result-summary">{report.summary}</p>}
       <p className="confidence-pill"><span className="confidence-dot" aria-hidden="true"/><span>{confidenceLabel(report.metadata.typeConfidence)}</span></p>
       {secondary && <p className="secondary-type-note show">{secondary}</p>}
     </section>
@@ -138,7 +143,7 @@ export function FreeResultPage({ report, typeResolution, isCheckoutStarting, che
       <FeedbackForm onSave={onSaveFeedback}/>
     </div>
 
-    <div className="share-row result-actions"><ShareButton className="secondary" label="診断ページをシェア"/><button type="button" className="ghost" onClick={onRestart}>もう一度診断する</button></div>
+    <div className="share-row result-actions"><ShareButton className="secondary" label="診断ページをシェア" characterName={report.route === "resolved" ? report.label : undefined}/><button type="button" className="ghost" onClick={onRestart}>もう一度診断する</button></div>
     {lockedTopic && <LockedReportModal topic={lockedTopic} onClose={closeLockedReport} onShowOffer={showPaidOffer}/>}
   </div></main>;
 }

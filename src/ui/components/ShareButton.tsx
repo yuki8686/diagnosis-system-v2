@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { DIAGNOSIS_DISPLAY_NAME, diagnosisShareText } from "../brand";
 
-export function ShareButton({ className = "share-top", label = "↗ シェア" }: { className?: string; label?: string }) {
+export function ShareButton({ className = "share-top", label = "↗ シェア", characterName }: { className?: string; label?: string; characterName?: string }) {
   const [message, setMessage] = useState("");
   const share = async () => {
-    const data = { title: "INNER NOTE", text: "人に見せている私と、本当の私のあいだ。自分の行動パターンを読み解く診断。", url: window.location.href };
+    const data = { title: DIAGNOSIS_DISPLAY_NAME, text: diagnosisShareText(characterName), url: window.location.href };
     try {
       if (navigator.share) await navigator.share(data);
       else if (navigator.clipboard) { await navigator.clipboard.writeText(data.url); setMessage("ページのURLをコピーしました"); }

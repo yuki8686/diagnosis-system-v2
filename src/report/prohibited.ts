@@ -1,7 +1,7 @@
 import type { ProhibitedCategory, ProhibitedFinding } from "../types";
 
 const RULES: Array<{ category: ProhibitedCategory; pattern: RegExp }> = [
-  { category: "inner_truth", pattern: /あなたの本心は|本当のあなたは|本当のあなた|根底では|心の奥では/g },
+  { category: "inner_truth", pattern: /あなたの本心は|本当のあなたは|本当のあなた|根底では|あなたの心の奥では/g },
   { category: "causal_history", pattern: /生まれつき|幼少期|過去の経験(?:が|により)原因|過去のトラウマ|トラウマ(?:が原因|によって)?/g },
   { category: "medical", pattern: /脳の構造|脳構造|心理疾患|精神疾患|治療が必要|医学的に診断/g },
   { category: "deterministic_future", pattern: /あなたは必ず|必ず成功する|恋愛では必ず|絶対に|100\s*%|確実に成功/g },

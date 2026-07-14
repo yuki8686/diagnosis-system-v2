@@ -80,7 +80,7 @@ const expressionOverrides = { DS1: 3, DS2: 3, DS3: 3, "DS-FIT": 5, "DS-M1": 4, "
 const expressionResult = buildDiagnosisResult({ questions: questionsFor(expressionRoute), answers: answerRoute(expressionRoute, expressionOverrides), routingState: expressionRoute, expressionIsGeneric: false, typeFitSignals: fitSignals });
 assert.equal(expressionResult.expression.pattern, "adaptive");
 assert.equal(expressionResult.expression.confidence, "medium");
-assert.match(resultLabel(expressionResult), /使い分け型/);
+assert.equal(resultLabel(expressionResult), "魔術師", "the unchanged win/adaptive result maps to its approved Arcana display name");
 
 const basicRoute = routeFor("basic", baseResolved, {});
 const basicResult = buildDiagnosisResult({ questions: questionsFor(basicRoute), answers: answerRoute(basicRoute), routingState: basicRoute, expressionIsGeneric: false, typeFitSignals: fitSignals });

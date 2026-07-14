@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DIAGNOSIS_DESCRIPTION, DIAGNOSIS_DISPLAY_NAME } from "../brand";
 import { ShareButton } from "./ShareButton";
 
 interface TopPageProps {
@@ -13,14 +14,14 @@ export function TopPage({ hasSavedProgress, onStart, onResume, onRestart }: TopP
   return <section className="screen active" id="home">
     <div className="shell">
       <header className="topbar">
-        <div className="brand"><span className="brand-mark"/>INNER NOTE</div>
+        <div className="brand"><span className="brand-mark"/>{DIAGNOSIS_DISPLAY_NAME}</div>
         <div className="header-actions"><ShareButton/><button className="linkbtn" onClick={onStart}>診断を始める</button></div>
       </header>
       <main className="hero">
         <div>
           <div className="kicker">Public self / Private self</div>
           <h1>人に見せている私と、<br/>本当の私のあいだ。</h1>
-          <p>性格だけでは説明できなかった、あなたの求め方と反応のくせ。<br/>人前の自分と、心の奥で動いている自分の違いまで読み解きます。</p>
+          <p>{DIAGNOSIS_DESCRIPTION}<br/>カードを引く占いではなく、回答傾向をもとに判定します。</p>
           <div className="actions">{hasSavedProgress ? <><button className="primary" onClick={onResume}>診断を続ける</button><button className="secondary" onClick={onRestart}>最初からやり直す</button></> : <><button className="primary" onClick={onStart}>無料で診断する</button><button className="secondary" onClick={() => document.getElementById("value")?.scrollIntoView()}>この診断でわかること</button></>}</div>
           <div className="note">約10分前後・途中保存対応</div>
           {hasSavedProgress && <div className="resume-banner show"><strong>前回の診断が途中で保存されています。</strong><div>同じブラウザから、未回答の続きへ戻れます。</div></div>}
@@ -36,7 +37,7 @@ export function TopPage({ hasSavedProgress, onStart, onResume, onRestart }: TopP
       <section className="feature-section"><div className="section-head"><div className="kicker">What this diagnosis reads</div><h2>あなたの内側を、4つの視点から読む。</h2></div><div className="feature-grid"><FeatureCard no="01 / INNER MOTIVE" title="あなたを動かしているもの" text="何を求めて選び、どんなときに強く反応するのかを整理します。"/><FeatureCard no="02 / PUBLIC SELF" title="人に見せている自分" text="周囲に合わせる中で、どんな自分を表に出しやすいかを読み取ります。"/><FeatureCard no="03 / GAP" title="本音とのズレ" text="内側で求めていることと、実際の振る舞いが離れやすい場面を見つけます。"/><FeatureCard no="04 / DEFENSE" title="心を守るときの反応" text="傷ついたときや追い込まれたときに出やすい防衛パターンを整理します。"/></div></section>
       <section className="cta-section"><h2>まだ言葉になっていない自分を、見つける。</h2><p>約10分前後。途中から再開できます。</p><div className="actions"><button className="primary" onClick={onStart}>無料で診断する</button></div></section>
       <div className="cta-share-below"><ShareButton className="secondary" label="↗ シェアする"/></div>
-      <footer className="footer"><div className="footer-inner"><div className="brand"><span className="brand-mark"/>INNER NOTE</div><div className="footer-links"><a href="#">利用規約</a><a href="#">プライバシーポリシー</a><a href="#">診断に関する注意事項</a><a href="#">お問い合わせ</a></div><div>© INNER NOTE</div></div></footer>
+      <footer className="footer"><div className="footer-inner"><div className="brand"><span className="brand-mark"/>{DIAGNOSIS_DISPLAY_NAME}</div><div className="footer-links"><a href="#">利用規約</a><a href="#">プライバシーポリシー</a><a href="#">診断に関する注意事項</a><a href="#">お問い合わせ</a></div><div>© {DIAGNOSIS_DISPLAY_NAME}</div></div></footer>
     </div>
   </section>;
 }

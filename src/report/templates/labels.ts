@@ -1,10 +1,13 @@
-import { EXPRESSION_LABELS, TYPE_LABELS, TYPE_PURPOSES } from "../../constants";
+import { EXPRESSION_LABELS, TYPE_LABELS } from "../../constants";
 import type { Confidence, ExpressionId, TypeId } from "../../types";
 
 export type LabelTemplateKey = `${TypeId}:${ExpressionId}`;
 
 interface BaseLabelReportTemplate {
+  characterName: string;
   headline: string;
+  coreDesire: string;
+  expressionDescription: string;
   core: string;
   expression: string;
   protects: string;
@@ -26,9 +29,21 @@ export interface LabelReportTemplate extends BaseLabelReportTemplate {
 export type ConfidenceCopy = Record<Confidence, string>;
 export type ConfidenceCopyField = "core" | "expression" | "protects" | "impression" | "misunderstanding" | "strength" | "friction" | "relationshipPossibility" | "workPossibility";
 
+export interface CharacterDisplayCopy {
+  type: TypeId;
+  expression: ExpressionId;
+  characterName: string;
+  headline: string;
+  coreDesire: string;
+  expressionDescription: string;
+}
+
 const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
   "win:outward": {
-    headline: "勝ち筋が見えると、場を動かさずにいられない人",
+    characterName: "戦車",
+    headline: "立ち止まった流れを見ると、自分が先頭に立って動かしたくなる人。",
+    coreDesire: "自分の力で状況を動かし、望む結果をつかみたい。",
+    expressionDescription: "意志や目標をはっきりと外へ示し、周囲を巻き込みながら前へ進む。",
     core: "対等以上に扱われることや、自分の貢献が結果として認められることへ反応しやすい傾向があります。",
     expression: "取りたい結果や前へ出たい気持ちを、言葉や行動として周囲へ示しやすい出し方です。",
     protects: "自分で流れを動かせる立場と、実力が結果へ反映される状態を守ろうとしやすい人です。",
@@ -40,7 +55,10 @@ const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
     observation: "前進の速さと周囲の納得が同時に保てたかを観察してください。",
   },
   "win:inward": {
-    headline: "表には出さず、内側で勝負を続ける人",
+    characterName: "力",
+    headline: "静かに見えても、心の奥では誰よりも負けたくない人。",
+    coreDesire: "自分の力で状況を動かし、望む結果をつかみたい。",
+    expressionDescription: "強い意志を内側に保ち、必要な瞬間まで力を蓄えながら粘り強く進む。",
     core: "軽く扱われないことや、自分の実力と貢献が正当に扱われることを大切にしやすい傾向があります。",
     expression: "取りたい結果への熱量を内側に保ち、表へ出す前に状況を見極めやすい出し方です。",
     protects: "自分の価値を不用意に下げず、確かな形で結果を示せる機会を守ろうとしやすい人です。",
@@ -52,7 +70,10 @@ const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
     observation: "熱量を全部見せなくても、希望が相手へ伝わったかを観察してください。",
   },
   "win:adaptive": {
-    headline: "勝負する場所を見極め、熱量を切り替える人",
+    characterName: "魔術師",
+    headline: "勝ち方をひとつに決めず、その場で最適な一手を生み出す人。",
+    coreDesire: "自分の力で状況を動かし、望む結果をつかみたい。",
+    expressionDescription: "相手や環境を読み、使う力や立ち位置を柔軟に切り替えて結果へつなげる。",
     core: "結果を取りにいける立場と、無駄に自分の価値を下げないことの両方を大切にしやすい傾向があります。",
     expression: "相手、場面、見通しを見ながら、前へ出るか全体を見るかを選び分ける出し方です。",
     protects: "取りにいく価値のある結果と、力を使う場面を自分で選べる余地を守ろうとしやすい人です。",
@@ -64,7 +85,10 @@ const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
     observation: "切り替えの理由を共有したことで、周囲が判断を追いやすくなったかを観察してください。",
   },
   "connect:outward": {
-    headline: "人と人のあいだに、温度を生み出す人",
+    characterName: "太陽",
+    headline: "自分が心から楽しむことで、いつの間にか周りまで明るくしている人。",
+    coreDesire: "人の心を動かし、関係の中で特別な存在になりたい。",
+    expressionDescription: "感情や魅力を素直に表し、場全体へ熱や明るさを広げていく。",
     core: "関係の温度が保たれ、自分の働きかけに反応が返ることを大切にしやすい傾向があります。",
     expression: "会いたい、話したい、反応がほしいという気持ちを、言葉や態度へ出しやすい出し方です。",
     protects: "人とのつながりと、互いの反応が行き来する状態を守ろうとしやすい人です。",
@@ -76,7 +100,10 @@ const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
     observation: "関係を保ちながら、自分の希望も場に残せたかを観察してください。",
   },
   "connect:inward": {
-    headline: "つながりを求めながら、静かな距離で待つ人",
+    characterName: "恋人",
+    headline: "広く好かれることより、大切な相手と深く結ばれたい人。",
+    coreDesire: "人の心を動かし、関係の中で特別な存在になりたい。",
+    expressionDescription: "少人数との信頼を丁寧に育て、互いに深く理解し合える関係を築く。",
     core: "大切な人とのつながりと、自分から求めたことで関係が崩れないことを大切にしやすい傾向があります。",
     expression: "関わりたい気持ちを内側で育て、相手へ見せる前に慎重になりやすい出し方です。",
     protects: "つながりを失わないことと、自分だけが傷つく状況を避けることを守ろうとしやすい人です。",
@@ -88,7 +115,10 @@ const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
     observation: "大きく求めなくても、関係へ小さな入口を作れたかを観察してください。",
   },
   "connect:adaptive": {
-    headline: "関係の温度を読みながら、近づき方を変える人",
+    characterName: "節制",
+    headline: "相手に合わせて温度を変えながら、人と人の間に心地よい流れを作る人。",
+    coreDesire: "人の心を動かし、関係の中で特別な存在になりたい。",
+    expressionDescription: "相手や場の空気を読み、距離感や役割を調整しながら自然につながりを作る。",
     core: "つながりを保つことと、関係の中で一人だけ傷つかないことの両方を大切にしやすい傾向があります。",
     expression: "相手との距離や反応を見ながら、自分から近づくか少し待つかを選び分ける出し方です。",
     protects: "関係の温度と、自分が安心して関われる距離の両方を守ろうとしやすい人です。",
@@ -100,7 +130,10 @@ const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
     observation: "相手の反応だけでなく、自分が無理なく関われたかも観察してください。",
   },
   "analyze:outward": {
-    headline: "曖昧なものを、理解できる形へ変える人",
+    characterName: "正義",
+    headline: "曖昧な状況でも、何が事実かを切り分けて進むべき道を示す人。",
+    coreDesire: "物事の仕組みを理解し、表面の奥にある答えを見つけたい。",
+    expressionDescription: "集めた情報を整理し、判断基準や見通しとして周囲へ分かりやすく示す。",
     core: "納得できる情報と、自分で考えられる余白を大切にしやすい傾向があります。",
     expression: "疑問や必要な時間、任せてほしい範囲を、質問や境界線として外へ出しやすい出し方です。",
     protects: "理解できる状態と、筋道を自分で確かめられる余地を守ろうとしやすい人です。",
@@ -112,7 +145,10 @@ const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
     observation: "整理の深さと相手の必要量が合っていたかを観察してください。",
   },
   "analyze:inward": {
-    headline: "分からなさを外へ出さず、自分の中で解き切ろうとする人",
+    characterName: "隠者",
+    headline: "誰も気づかない違和感を、答えが見えるまで一人で追い続ける人。",
+    coreDesire: "物事の仕組みを理解し、表面の奥にある答えを見つけたい。",
+    expressionDescription: "静かな環境で深く考え、自分が納得できるまで答えを内側で研ぎ澄ます。",
     core: "理解できる状態と、自分のペースを崩されないことを大切にしやすい傾向があります。",
     expression: "疑問や違和感を内側で処理し、納得できるまで一人で考えやすい出し方です。",
     protects: "途中の理解を急かされず、自分の中で筋道を確かめられる時間を守ろうとしやすい人です。",
@@ -124,7 +160,10 @@ const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
     observation: "完成した質問でなくても、認識違いを早く見つけられたかを観察してください。",
   },
   "analyze:adaptive": {
-    headline: "理解の安全度を見ながら、質問と沈黙を使い分ける人",
+    characterName: "吊るされた男",
+    headline: "世界を逆さから眺めることで、誰も気づかなかった答えを見つける人。",
+    coreDesire: "物事の仕組みを理解し、表面の奥にある答えを見つけたい。",
+    expressionDescription: "相手や状況に応じて視点を切り替え、複数の角度から意味を読み直す。",
     core: "理解できる状態と、不十分なまま自分をさらさないことの両方を大切にしやすい傾向があります。",
     expression: "相手、立場、得意不得意を見ながら、質問するか持ち帰って考えるかを選び分ける出し方です。",
     protects: "必要な理解と、途中の考えを安心して扱える条件の両方を守ろうとしやすい人です。",
@@ -136,7 +175,10 @@ const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
     observation: "考える時間を守りながら、相手との認識もつなげられたかを観察してください。",
   },
   "axis:outward": {
-    headline: "見過ごされる違和感に、形と言葉を与える人",
+    characterName: "女帝",
+    headline: "自分の「好き」を育て、周りの世界まで豊かに変えていく人。",
+    coreDesire: "自分の理想や美学を、納得できる形で現実に残したい。",
+    expressionDescription: "感性や価値観を外へ表現し、人や環境へ広げながら新しい価値を育てる。",
     core: "自分の基準と行動が食い違わず、意味のある形へ近づくことを大切にしやすい傾向があります。",
     expression: "大切にする基準や目指す形を、言葉や提案として外へ出しやすい出し方です。",
     protects: "意味のある方向と、自分の基準が現実へ反映される状態を守ろうとしやすい人です。",
@@ -148,7 +190,10 @@ const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
     observation: "基準を下げずに、相手が改善へ参加しやすくなったかを観察してください。",
   },
   "axis:inward": {
-    headline: "理想を語らず、内側で守り続ける人",
+    characterName: "星",
+    headline: "まだ誰にも見えていない理想を、現実になるまで静かに守り続ける人。",
+    coreDesire: "自分の理想や美学を、納得できる形で現実に残したい。",
+    expressionDescription: "理想を内側で丁寧に育て、妥協せず完成度を高めてから外へ表す。",
     core: "自分の基準や意味を失わず、外へ出したことで関係が崩れないことを大切にしやすい傾向があります。",
     expression: "理想や違和感を内側に保ち、語る前に周囲との関係を見極めやすい出し方です。",
     protects: "大切な基準と、それを否定されずに保てる内側の領域を守ろうとしやすい人です。",
@@ -160,7 +205,10 @@ const LABEL_TEMPLATE_COPY: Record<LabelTemplateKey, BaseLabelReportTemplate> = {
     observation: "理想をすべて説明しなくても、大切な核を共有できたかを観察してください。",
   },
   "axis:adaptive": {
-    headline: "守る理想を選び、現実との距離を調整する人",
+    characterName: "運命の輪",
+    headline: "大切なものは変えずに、届く形へ何度でも自分を更新できる人。",
+    coreDesire: "自分の理想や美学を、納得できる形で現実に残したい。",
+    expressionDescription: "自分の核を保ちながら、環境や時代に合わせて形や表現方法を変えていく。",
     core: "自分らしさや意味を失わず、現実の中で理想を生き残らせることを大切にしやすい傾向があります。",
     expression: "相手、場面、テーマの重要度を見ながら、基準を語るか内側で保つかを選び分ける出し方です。",
     protects: "譲れない核と、理想を現実へつなぐための柔軟さの両方を守ろうとしやすい人です。",
@@ -308,10 +356,26 @@ export function conditionTemplate(type: TypeId, expression: ExpressionId): Condi
   return CONDITION_TEMPLATES[`${type}:${expression}`];
 }
 
-export function resolvedLabel(type: TypeId, expression: ExpressionId): string {
-  return `${TYPE_LABELS[type]}・${EXPRESSION_LABELS[expression]}`;
+export function characterNameFor(type: TypeId, expression: ExpressionId): string {
+  return labelTemplate(type, expression).characterName;
 }
 
-export function resolvedSubtitle(type: TypeId): string {
-  return `${TYPE_PURPOSES[type]}ことを大切にする傾向`;
+export function characterDisplayCopyForLabel(label: string): CharacterDisplayCopy | undefined {
+  for (const [key, template] of Object.entries(LABEL_TEMPLATES) as Array<[LabelTemplateKey, LabelReportTemplate]>) {
+    const [type, expression] = key.split(":") as [TypeId, ExpressionId];
+    const legacyLabel = `${TYPE_LABELS[type]}・${EXPRESSION_LABELS[expression]}`;
+    if (label === template.characterName || label === legacyLabel) {
+      const { characterName, headline, coreDesire, expressionDescription } = template;
+      return { type, expression, characterName, headline, coreDesire, expressionDescription };
+    }
+  }
+  return undefined;
+}
+
+export function resolvedLabel(type: TypeId, expression: ExpressionId): string {
+  return characterNameFor(type, expression);
+}
+
+export function resolvedSubtitle(type: TypeId, expression: ExpressionId): string {
+  return labelTemplate(type, expression).expressionDescription;
 }

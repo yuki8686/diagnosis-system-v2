@@ -1,8 +1,9 @@
 import { strict as assert } from "node:assert";
 import { questionBank } from "../src/data/question-bank";
 import { toAnswer } from "../src/ui/adapter";
+import { diagnosisShareText } from "../src/ui/brand";
 import { activeUiScreen, hasSavedProgress, initialScreen, isResultLoadingComplete, nextPageIndex, previousPageIndex, RESULT_LOADING_STEP_MS, RESULT_LOADING_TITLES, resultLoadingTitleIndex, shouldScrollWindowToTop, shouldStartResultGeneration } from "../src/ui/flow";
-import { conditionsViewModel, confidenceLabel, gapStateLabel, gapViewModel, numberedResultChapters, privateSelfViewModel, publicSelfViewModel, resultStatusBanner, secondaryTypeNote, visibleFreeReportSection, visibleFreeReportSections } from "../src/ui/free-result";
+import { characterHeroViewModel, conditionsViewModel, confidenceLabel, gapStateLabel, gapViewModel, numberedResultChapters, privateSelfViewModel, publicSelfViewModel, resultStatusBanner, secondaryTypeNote, visibleFreeReportSection, visibleFreeReportSections } from "../src/ui/free-result";
 import { buildQuestionPages } from "../src/ui/page-builder";
 import { lockedReportModalContent, lockedReportOffer } from "../src/ui/locked-report";
 import { newSession, upsertAnswer } from "../src/ui/session";
@@ -54,9 +55,9 @@ assert.equal(shouldScrollWindowToTop("top", "top"), false, "opening or cancellin
 const report = {
   kind: "free",
   route: "resolved",
-  label: "勝ち筋タイプ・打ち出す型",
-  subtitle: "成果へ向かうために、自分の意図を外へ出す結果",
-  summary: "回答時点の傾向です。",
+  label: "戦車",
+  subtitle: "意志や目標をはっきりと外へ示し、周囲を巻き込みながら前へ進む。",
+  summary: "自分の力で状況を動かし、望む結果をつかみたい。",
   anchors: [],
   details: { gap: { state: "aligned", paragraphs: [] } },
   metadata: { sessionId: "session-a", questionBankVersion: "1", scoringVersion: "1", engineVersion: "1", reportTemplateVersion: "1", typeConfidence: "high", expressionConfidence: "medium", gapConfidence: "medium", defenseConfidence: "medium", utilizationConfidence: "medium", effectiveWording: { type: "direct", expression: "direct", gap: "direct", defense: "direct", utilization: "direct" }, reliabilityDowngradedBlocks: [] },
@@ -69,6 +70,18 @@ const report = {
   ],
 } as FreeReport;
 
+assert.deepEqual(characterHeroViewModel(report), {
+  categoryLabel: "あなたの本音キャラは",
+  characterName: "戦車",
+  headlines: ["立ち止まった流れを見ると、自分が先頭に立って動かしたくなる人。"],
+  coreDesire: "自分の力で状況を動かし、望む結果をつかみたい。",
+  expressionDescription: "意志や目標をはっきりと外へ示し、周囲を巻き込みながら前へ進む。",
+}, "the resolved result hero exposes only the four customer-facing character roles");
+assert.deepEqual(characterHeroViewModel({ ...report, label: "勝ち筋タイプ・打ち出す型", subtitle: "旧表れ方", summary: "旧要約" }), characterHeroViewModel(report), "a compatible saved report with a legacy label is normalized to the approved character copy at display time");
+assert.equal(characterHeroViewModel({ ...report, route: "low_confidence" }), undefined, "a low-confidence result is not presented as one resolved character");
+assert.equal(diagnosisShareText("星"), "本音キャラ診断をやったら「星」でした。\nあなたの本音キャラも診断する。", "the result share text uses the character name without appending an extra suffix");
+assert.doesNotMatch(diagnosisShareText("星"), /星キャラ/, "the result share text does not alter an approved character name");
+assert.match(diagnosisShareText(), /回答傾向をもとに判定します/, "the generic share text explains that this is a response-based diagnosis");
 assert.equal(visibleFreeReportSection(report, "headline")?.paragraphs[0], "ヒーローの本文", "the headline is retrieved by its ID rather than report order");
 assert.deepEqual(visibleFreeReportSections(report).map((section) => section.id), ["core_desire", "expression", "observation"], "body sections use their fixed display order even if report sections are reordered");
 assert.equal(visibleFreeReportSections(report).some((section) => section.id === "headline"), false, "the headline is not repeated in the result body");
@@ -145,5 +158,5 @@ assert.equal(confidenceLabel("low"), "判定の確からしさ：参考");
 assert.equal(resultStatusBanner({ ...report, route: "resolved" }, { kind: "resolved", primary: "win", source: "base" }), undefined, "a resolved result does not show an unnecessary warning");
 assert.equal(resultStatusBanner({ ...report, route: "low_confidence" }, { kind: "low-confidence", candidates: ["win", "connect"] })?.tone, "low", "a low-confidence route shows its status banner");
 assert.equal(resultStatusBanner(report, { kind: "resolved", primary: "win", secondary: "connect", source: "comparison" })?.tone, "tie", "a comparison-resolved close type result shows its status banner");
-assert.equal(secondaryTypeNote(report, { kind: "resolved", primary: "win", secondary: "connect", source: "comparison" }), "次点候補：つながりタイプ", "the secondary type is displayed through its user-facing label");
+assert.equal(secondaryTypeNote(report, { kind: "resolved", primary: "win", secondary: "connect", source: "comparison" }), "次点候補：太陽", "the secondary result uses the arcana name for the same expression pattern");
 console.log("UI screen-state, resume, restart, and page-navigation tests passed");

@@ -18,7 +18,7 @@ export function LegalNoticePage() {
   const [details, setDetails] = useState<LegalDetails>({ configured: false });
   useEffect(() => { void fetch("/api/legal").then((response) => response.json()).then((value: unknown) => { if (value && typeof value === "object" && "configured" in value) setDetails(value as LegalDetails); }).catch(() => undefined); }, []);
   const unknown = <span>公開準備中（本番決済開始前に設定必須）</span>;
-  return <main className="screen active result-page"><div className="shell result-wrap"><header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>INNER NOTE</div><a className="linkbtn" href="/">診断ページへ戻る</a></header><section className="result-section" aria-labelledby="legal-title"><p className="eyebrow">LEGAL NOTICE</p><h1 id="legal-title">特定商取引法に基づく表記</h1><dl className="legal-list">
+  return <main className="screen active result-page"><div className="shell result-wrap"><header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>本音キャラ診断</div><a className="linkbtn" href="/">診断ページへ戻る</a></header><section className="result-section" aria-labelledby="legal-title"><p className="eyebrow">LEGAL NOTICE</p><h1 id="legal-title">特定商取引法に基づく表記</h1><dl className="legal-list">
     <dt>販売事業者</dt><dd>{details.configured ? details.sellerName : unknown}</dd>
     <dt>サービス名</dt><dd>{details.serviceName || unknown}</dd>
     <dt>診断名</dt><dd>{details.diagnosisName || unknown}</dd>

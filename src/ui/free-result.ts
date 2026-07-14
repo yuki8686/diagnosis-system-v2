@@ -1,5 +1,5 @@
-import { TYPE_LABELS } from "../constants";
 import type { Confidence, FreeGapState, FreeReport, FreeReportDisplayItem, ReportSectionId, TypeResolution } from "../types";
+import { characterDisplayCopyForLabel, characterNameFor } from "../report/templates/labels";
 
 export interface VisibleFreeReportSection {
   id: ReportSectionId;
@@ -45,6 +45,14 @@ export interface NumberedResultChapter {
   chapter: string;
 }
 
+export interface CharacterHeroViewModel {
+  categoryLabel: "あなたの本音キャラは";
+  characterName: string;
+  headlines: string[];
+  coreDesire: string;
+  expressionDescription: string;
+}
+
 const bodySectionIds = ["core_desire", "expression", "observation"] as const;
 const lockedGapItems = [
   { title: "ズレが強く出やすい場面", hint: "詳細レポートで表示" },
@@ -72,6 +80,27 @@ export function confidenceLabel(confidence: Confidence): string {
 export function visibleFreeReportSection(report: FreeReport, id: ReportSectionId): VisibleFreeReportSection | undefined {
   const section = report.sections.find((item) => item.id === id);
   return section ? { id: section.id, title: section.title, paragraphs: section.paragraphs.map((paragraph) => paragraph.text) } : undefined;
+}
+
+export function characterHeroViewModel(report: FreeReport): CharacterHeroViewModel | undefined {
+  if (report.route !== "resolved") return undefined;
+  const approvedCopy = characterDisplayCopyForLabel(report.label);
+  if (approvedCopy) return {
+    categoryLabel: "あなたの本音キャラは",
+    characterName: approvedCopy.characterName,
+    headlines: [approvedCopy.headline],
+    coreDesire: approvedCopy.coreDesire,
+    expressionDescription: approvedCopy.expressionDescription,
+  };
+  const headlines = visibleFreeReportSection(report, "headline")?.paragraphs.filter((text) => text.trim()) ?? [];
+  if (!report.label.trim() || !report.summary.trim() || !report.subtitle.trim() || headlines.length === 0) return undefined;
+  return {
+    categoryLabel: "あなたの本音キャラは",
+    characterName: report.label,
+    headlines,
+    coreDesire: report.summary,
+    expressionDescription: report.subtitle,
+  };
 }
 
 export function visibleFreeReportSections(report: FreeReport, options: { includeExpression?: boolean } = {}): VisibleFreeReportSection[] {
@@ -172,11 +201,12 @@ export function resultStatusBanner(report: FreeReport, resolution?: TypeResoluti
 
 export function secondaryTypeNote(report: FreeReport, resolution?: TypeResolution): string | undefined {
   if (report.route === "low_confidence" && resolution?.kind === "low-confidence") {
-    return `候補タイプ：${resolution.candidates.map((typeId) => TYPE_LABELS[typeId]).join("・")}`;
+    return `本音キャラ候補：${report.label.replace(" × ", "・")}`;
   }
   if (report.route === "resolved" && resolution?.kind === "resolved" && resolution.secondary) {
-    const prefix = resolution.source === "comparison" ? "次点候補" : "次点タイプ";
-    return `${prefix}：${TYPE_LABELS[resolution.secondary]}`;
+    const prefix = resolution.source === "comparison" ? "次点候補" : "次点の本音キャラ";
+    const expression = characterDisplayCopyForLabel(report.label)?.expression;
+    return expression ? `${prefix}：${characterNameFor(resolution.secondary, expression)}` : `${prefix}があります`;
   }
   return undefined;
 }

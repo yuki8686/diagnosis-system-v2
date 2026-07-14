@@ -1,4 +1,4 @@
-import { DEFENSE_LABELS, TYPE_LABELS } from "../constants";
+import { DEFENSE_LABELS } from "../constants";
 import type {
   ActionProposal, AnswerReference, DefenseCategory, DefenseClaimKind, DiagnosisBlock, FreeGapState,
   FreeReport, FreeReportDetails, FreeReportDisplayItem, PaidReport, PersonalizationAnchor, ReportInput,
@@ -8,7 +8,7 @@ import type {
 import { buildAnchors, buildAnswerReferences } from "./anchors";
 import { effectiveWordingForInput, evidenceFor } from "./evidence";
 import { PaidReportQualityError, validatePaidReport } from "./quality";
-import { ANSWER_PUNCH_LEADS, conditionTemplate, labelTemplate, renderLabelCopy, resolvedLabel, resolvedSubtitle } from "./templates/labels";
+import { ANSWER_PUNCH_LEADS, characterNameFor, conditionTemplate, labelTemplate, renderLabelCopy, resolvedLabel, resolvedSubtitle } from "./templates/labels";
 import {
   breadthText, CONFIRMATION_STATUS_TEXT, confidenceSentence, GAP_DIRECTION_TEXT, GAP_PATTERN_TEXT,
   gapStrengthText, UTILIZATION_BAND_TEXT, UTILIZATION_USE_BAND_TEXT, utilizationGapText,
@@ -59,7 +59,7 @@ function primaryType(input: ReportInput): TypeId { return input.result.resolutio
 function labelFor(input: ReportInput): string {
   return input.result.resolution.kind === "resolved"
     ? resolvedLabel(input.result.resolution.primary, input.result.expression.pattern)
-    : input.result.resolution.candidates.slice(0, 2).map((id) => TYPE_LABELS[id]).join(" × ");
+    : input.result.resolution.candidates.slice(0, 2).map((id) => characterNameFor(id, input.result.expression.pattern)).join(" × ");
 }
 
 function sourceFor(input: ReportInput, block: DiagnosisBlock): string[] {
@@ -294,8 +294,8 @@ export function generateFreeReport(input: ReportInput): FreeReport {
   const typeRef = typeReference(input);
   const hook = freeHook(input, template);
   const route = reportRoute(input);
-  const lowCandidates = input.result.resolution.kind === "low-confidence" ? input.result.resolution.candidates.slice(0, 2).map((id) => TYPE_LABELS[id]).join("と") : "";
-  const summary = route === "resolved" ? renderLabelCopy(template, "core", input.result.confidence.type) : `${lowCandidates}の両方が候補に残り、場面によって大切にするものが切り替わる結果です。`;
+  const lowCandidates = input.result.resolution.kind === "low-confidence" ? input.result.resolution.candidates.slice(0, 2).map((id) => characterNameFor(id, input.result.expression.pattern)).join("と") : "";
+  const summary = route === "resolved" ? template.coreDesire : `${lowCandidates}の両方が候補に残り、場面によって大切にするものが切り替わる結果です。`;
   const sections = [
     section("headline", [paragraph(input, "free-headline", route === "resolved" ? template.headline : "二つの欲求を、場面に応じて使い分ける結果", "type", "inferred", sourceFor(input, "type"))]),
     section("core_desire", [
@@ -314,7 +314,7 @@ export function generateFreeReport(input: ReportInput): FreeReport {
     section("disclaimer", [paragraph(input, "free-disclaimer", "この結果は回答時点の傾向を整理するもので、医療行為や人格全体の判定ではありません。", "type", "possibility", sourceFor(input, "type"))]),
   ];
   const details = freeReportDetails(input, type, template, anchors);
-  return { kind: "free", route, label: labelFor(input), subtitle: route === "resolved" ? resolvedSubtitle(type) : "上位候補が切り替わる条件を観察する結果", summary, anchors, sections, details, metadata: metadata(input) };
+  return { kind: "free", route, label: labelFor(input), subtitle: route === "resolved" ? resolvedSubtitle(type, input.result.expression.pattern) : "上位候補が切り替わる条件を観察する結果", summary, anchors, sections, details, metadata: metadata(input) };
 }
 
 function actionProposal(input: ReportInput): ActionProposal {
@@ -330,7 +330,7 @@ function resolvedPaidSections(input: ReportInput, anchors: PersonalizationAnchor
   const type = primaryType(input);
   const template = labelTemplate(type, input.result.expression.pattern);
   const typeRef = typeReference(input);
-  const sub = input.result.resolution.kind === "resolved" && input.result.resolution.secondary ? `サブ傾向として${TYPE_LABELS[input.result.resolution.secondary]}が単独二位にあります。` : "単独二位の条件を満たすサブ傾向は表示していません。";
+  const sub = input.result.resolution.kind === "resolved" && input.result.resolution.secondary ? `次点の本音キャラとして${characterNameFor(input.result.resolution.secondary, input.result.expression.pattern)}が単独二位にあります。` : "単独二位の条件を満たす次点候補は表示していません。";
   return [
     section("headline", [paragraph(input, "paid-headline", template.headline, "type", "inferred", sourceFor(input, "type"))]),
     section("core_desire", [
@@ -356,12 +356,14 @@ function lowPaidSections(input: ReportInput, anchors: PersonalizationAnchor[], a
   const [first, second] = input.result.resolution.candidates;
   const firstTemplate = labelTemplate(first, input.result.expression.pattern);
   const secondTemplate = labelTemplate(second, input.result.expression.pattern);
+  const firstCharacter = characterNameFor(first, input.result.expression.pattern);
+  const secondCharacter = characterNameFor(second, input.result.expression.pattern);
   const typeRef = typeReference(input);
   return [
-    section("headline", [paragraph(input, "low-headline", `${TYPE_LABELS[first]}と${TYPE_LABELS[second]}が上位候補として残る結果です。`, "type", "derived", sourceFor(input, "type"))]),
+    section("headline", [paragraph(input, "low-headline", `${firstCharacter}と${secondCharacter}が本音キャラ候補として残る結果です。`, "type", "derived", sourceFor(input, "type"))]),
     section("core_desire", [
       paragraph(input, "low-common", `共通しているのは、「${firstTemplate.protectedFocus}」と「${secondTemplate.protectedFocus}」をどちらも無視しにくい点です。`, "type", "inferred", sourceFor(input, "type")),
-      paragraph(input, "low-difference", `違いは、${TYPE_LABELS[first]}が「${firstTemplate.coreFocus}」を、${TYPE_LABELS[second]}が「${secondTemplate.coreFocus}」を優先しやすい点です。`, "type", "derived", sourceFor(input, "type")),
+      paragraph(input, "low-difference", `違いは、${firstCharacter}が「${firstTemplate.coreFocus}」を、${secondCharacter}が「${secondTemplate.coreFocus}」を優先しやすい点です。`, "type", "derived", sourceFor(input, "type")),
       paragraph(input, "low-comparison-answer", answerPunch(typeRef, `${firstTemplate.protectedFocus}と${secondTemplate.protectedFocus}`), "type", "direct", [typeRef.questionId], { layer: "personalization", anchorIds: anchorIds(anchors, "comparison") }),
     ]),
     section("expression", [paragraph(input, "low-expression", `汎用の出し方回答では、${firstTemplate.expression} 同時に、${secondTemplate.expression} 場面と相手を見て出し方を選ぶ余地があります。`, "expression", "derived", sourceFor(input, "expression"))]),
@@ -369,7 +371,7 @@ function lowPaidSections(input: ReportInput, anchors: PersonalizationAnchor[], a
     section("defense", defenseClaims(input, anchors)),
     section("utilization", [
       ...utilizationParagraphs(input, anchors),
-      paragraph(input, "low-candidate-utilization", `${TYPE_LABELS[first]}と${TYPE_LABELS[second]}に対応する使いこなし回答をまとめると、${UTILIZATION_BAND_TEXT[input.result.utilization.awarenessBand]}一方、${UTILIZATION_USE_BAND_TEXT[input.result.utilization.utilizationBand]}状態です。`, "utilization", "derived", sourceFor(input, "utilization")),
+      paragraph(input, "low-candidate-utilization", `${firstCharacter}と${secondCharacter}に対応する使いこなし回答をまとめると、${UTILIZATION_BAND_TEXT[input.result.utilization.awarenessBand]}一方、${UTILIZATION_USE_BAND_TEXT[input.result.utilization.utilizationBand]}状態です。`, "utilization", "derived", sourceFor(input, "utilization")),
       paragraph(input, "low-switch-condition", `切り替わる条件として、「${firstTemplate.coreFocus}」と「${secondTemplate.coreFocus}」のどちらを先に守ろうとしたかを、場面ごとに確かめてください。`, "type", "inferred", sourceFor(input, "type")),
     ]),
     section("action", [paragraph(input, "low-action", `${action.text} ${action.expectedObservation}`, "gap", "inferred", action.sourceQuestionIds)]),
@@ -385,7 +387,7 @@ export function generatePaidReport(input: ReportInput, freeReport?: FreeReport):
   const type = primaryType(input);
   const draft: PaidReport = {
     kind: "paid", route, label: labelFor(input),
-    subtitle: route === "resolved" ? resolvedSubtitle(type) : "上位候補の共通点と切り替わる条件を観察するレポート",
+    subtitle: route === "resolved" ? resolvedSubtitle(type, input.result.expression.pattern) : "上位候補の共通点と切り替わる条件を観察するレポート",
     anchors, sections: route === "resolved" ? resolvedPaidSections(input, anchors, action) : lowPaidSections(input, anchors, action),
     answerReferences: references(input), actionProposals: [action], qualityGate: { passed: true, issues: [] }, metadata: metadata(input),
     defenseContext: { primary: input.result.defense.primary, primaryTied: input.result.defense.primaryTied, confidence: input.result.defense.confidence, opportunityLimited: input.result.defense.opportunityLimited },
@@ -397,5 +399,5 @@ export function generatePaidReport(input: ReportInput, freeReport?: FreeReport):
 }
 
 export function resultLabel(input: { resolution: ReportInput["result"]["resolution"]; expression: ReportInput["result"]["expression"] }): string {
-  return input.resolution.kind === "resolved" ? resolvedLabel(input.resolution.primary, input.expression.pattern) : input.resolution.candidates.slice(0, 2).map((id) => TYPE_LABELS[id]).join(" × ");
+  return input.resolution.kind === "resolved" ? resolvedLabel(input.resolution.primary, input.expression.pattern) : input.resolution.candidates.slice(0, 2).map((id) => characterNameFor(id, input.expression.pattern)).join(" × ");
 }
