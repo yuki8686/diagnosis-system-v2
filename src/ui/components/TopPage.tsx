@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { DIAGNOSIS_DESCRIPTION, DIAGNOSIS_DISPLAY_NAME } from "../brand";
+import { legalLinks } from "../legal-links";
 import { ShareButton } from "./ShareButton";
 
 interface TopPageProps {
@@ -37,7 +38,7 @@ export function TopPage({ hasSavedProgress, onStart, onResume, onRestart }: TopP
       <section className="feature-section"><div className="section-head"><div className="kicker">What this diagnosis reads</div><h2>あなたの内側を、4つの視点から読む。</h2></div><div className="feature-grid"><FeatureCard no="01 / INNER MOTIVE" title="あなたを動かしているもの" text="何を求めて選び、どんなときに強く反応するのかを整理します。"/><FeatureCard no="02 / PUBLIC SELF" title="人に見せている自分" text="周囲に合わせる中で、どんな自分を表に出しやすいかを読み取ります。"/><FeatureCard no="03 / GAP" title="本音とのズレ" text="内側で求めていることと、実際の振る舞いが離れやすい場面を見つけます。"/><FeatureCard no="04 / DEFENSE" title="心を守るときの反応" text="傷ついたときや追い込まれたときに出やすい防衛パターンを整理します。"/></div></section>
       <section className="cta-section"><h2>まだ言葉になっていない自分を、見つける。</h2><p>約10分前後。途中から再開できます。</p><div className="actions"><button className="primary" onClick={onStart}>無料で診断する</button></div></section>
       <div className="cta-share-below"><ShareButton className="secondary" label="↗ シェアする"/></div>
-      <footer className="footer"><div className="footer-inner"><div className="brand"><span className="brand-mark"/>{DIAGNOSIS_DISPLAY_NAME}</div><div className="footer-links"><a href="#">利用規約</a><a href="#">プライバシーポリシー</a><a href="#">診断に関する注意事項</a><a href="#">お問い合わせ</a></div><div>© {DIAGNOSIS_DISPLAY_NAME}</div></div></footer>
+      <footer className="footer"><div className="footer-inner"><div className="brand"><span className="brand-mark"/>{DIAGNOSIS_DISPLAY_NAME}</div><div className="footer-links"><a href={legalLinks.terms}>利用規約</a><a href={legalLinks.privacy}>プライバシーポリシー</a><a href={legalLinks.commercialTransactions}>特定商取引法に基づく表記</a><a href={legalLinks.contact}>お問い合わせ</a></div><div>© {DIAGNOSIS_DISPLAY_NAME}</div></div></footer>
     </div>
   </section>;
 }

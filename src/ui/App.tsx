@@ -7,6 +7,7 @@ import { ConfirmationScreen } from "./components/ConfirmationScreen";
 import { DiagnosisIntro } from "./components/DiagnosisIntro";
 import { FreeResultPage } from "./components/FreeResultPage";
 import { PaidReportPage } from "./components/PaidReportPage";
+import { PrivacyPage } from "./components/PrivacyPage";
 import { PurchasePendingScreen } from "./components/PurchasePendingScreen";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { LegalNoticePage } from "./components/LegalNoticePage";
@@ -53,6 +54,7 @@ export default function App() {
   const reportAccessToken = typeof window === "undefined" ? undefined : window.location.pathname.match(/^\/report\/([A-Za-z0-9_-]{43})$/)?.[1];
   const legalPath = typeof window !== "undefined" && window.location.pathname === "/legal";
   const termsPath = typeof window !== "undefined" && window.location.pathname === "/terms";
+  const privacyPath = typeof window !== "undefined" && window.location.pathname === "/privacy";
   const checkoutResultId = typeof window === "undefined" ? undefined : new URLSearchParams(window.location.search).get("checkout") === "success" ? new URLSearchParams(window.location.search).get("resultId") ?? undefined : undefined;
 
   useEffect(() => {
@@ -225,6 +227,7 @@ export default function App() {
   if (reportAccessToken) return <PaidReportPage accessToken={reportAccessToken}/>;
   if (legalPath) return <LegalNoticePage/>;
   if (termsPath) return <TermsPage/>;
+  if (privacyPath) return <PrivacyPage/>;
   if (checkoutResultId) return <PurchasePendingScreen error={purchasePendingError}/>;
   if (activeScreen === "resume-blocked") return <main className="screen intro-screen"><div className="shell"><header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true"/>本音キャラ診断</div></header><section className="center-main"><div className="panel blocked-panel"><p className="kicker">VERSION UPDATE</p><h1>保存済みの診断を<br/>再開できません。</h1><p>診断内容が更新されたため、保存済みの回答との互換性を確認できませんでした。安全のため、現在の保存内容は再開せず新しく始めてください。</p><div className="panel-actions"><button className="primary" onClick={() => { localStorage.removeItem(STORAGE_KEY); setSession(newSession()); setScreen("intro"); }}>新しく診断を開始する</button><button className="ghost" onClick={() => setScreen("top")}>トップへ戻る</button></div></div></section></div></main>;
   if (activeScreen === "result" && session.freeReport) return <><FreeResultPage report={session.freeReport} typeResolution={session.route?.typeResolution} isCheckoutStarting={checkoutState === "starting"} checkoutError={checkoutError} onStartCheckout={startCheckout} onSaveFeedback={saveFeedback} onBack={() => setScreen("top")} onRestart={() => requestRestart("result")}/>{screen === "restart-confirm" && <RestartConfirmModal onCancel={() => setScreen(restartReturnScreen)} onConfirm={startFresh}/>}</>;

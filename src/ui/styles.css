@@ -228,9 +228,27 @@ h1, h2, h3 { font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; }
 .paid-card { background: linear-gradient(145deg, #fff8f4, #f7eef4 58%, #f0eff8); text-align: center; }
 .paid-card .eyebrow { font-size: 11px; letter-spacing: .18em; color: #a87386; margin: 0 0 10px; }
 .paid-card p { max-width: 660px; margin-left: auto; margin-right: auto; }
+.paid-product-name { margin-top: 22px !important; color: #6f626a !important; font-weight: 600; }
+.launch-offer-notice { color: #7b6f77 !important; font-size: 12px !important; }
+.purchase-conditions { max-width: 660px; margin: 20px auto 0; padding: 18px 20px 18px 38px; border-radius: 18px; background: rgba(255, 255, 255, .56); border: 1px solid rgba(169, 99, 125, .12); color: #756a71; text-align: left; font-size: 13px; line-height: 1.75; }
+.purchase-conditions li + li { margin-top: 5px; }
 .purchase-state-note { margin-top: 18px !important; padding: 12px 14px; border-radius: 16px; background: rgba(255, 255, 255, .62); border: 1px solid rgba(169, 99, 125, .12); color: #756a71 !important; font-size: 12px !important; }
+.purchase-consent { display: flex; align-items: flex-start; gap: 10px; max-width: 660px; margin: 18px auto 0; padding: 14px 16px; border-radius: 16px; background: rgba(255, 255, 255, .72); border: 1px solid rgba(169, 99, 125, .16); color: #675d63; text-align: left; font-size: 13px; line-height: 1.65; }
+.purchase-consent input { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 2px; accent-color: #9e6d80; }
+.purchase-consent a, .legal-document a { color: #8f6073; text-decoration: underline; text-underline-offset: 3px; }
+.purchase-consent:focus-within { outline: 2px solid #9e6d80; outline-offset: 3px; }
 .paid-actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
 .paid-actions .primary:disabled { cursor: not-allowed; opacity: .55; transform: none; }
+.legal-document { text-align: left; }
+.legal-document > h1 { margin-bottom: 22px; }
+.legal-document > h2 { margin: 30px 0 10px; font-size: 18px; color: #554b51; }
+.legal-document > p, .legal-document > ul { color: #746a70; line-height: 1.85; }
+.legal-document > ul { padding-left: 1.4em; }
+.legal-list { display: grid; grid-template-columns: minmax(150px, 190px) 1fr; margin: 24px 0 0; border-top: 1px solid #e4dadd; }
+.legal-list dt, .legal-list dd { margin: 0; padding: 16px; border-bottom: 1px solid #e4dadd; line-height: 1.75; }
+.legal-list dt { background: #faf6f5; color: #5f545a; font-weight: 600; }
+.legal-list dd { color: #746a70; }
+.legal-effective-date { margin-top: 34px; font-size: 13px; color: #81767c !important; }
 .deep-report { display: grid; gap: 16px; }
 .deep-report-hero { text-align: center; background: linear-gradient(145deg, #fffaf7, #f7edf3 62%, #efeff8); }
 .deep-report-subtitle { max-width: 700px; margin: 18px auto 0; padding: 15px 18px; border-radius: 18px; background: rgba(255, 255, 255, .62); border: 1px solid rgba(169, 99, 125, .12); text-align: left; }
@@ -279,6 +297,10 @@ h1, h2, h3 { font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; }
   .page-actions .primary, .page-actions .secondary { width: 100%; }
   .soft-list, .state-grid, .locked-preview { grid-template-columns: 1fr; }
   .feedback-scale { gap: 6px; }
+  .legal-list { grid-template-columns: 1fr; }
+  .legal-list dt { border-bottom: 0; padding-bottom: 7px; }
+  .legal-list dd { padding-top: 7px; overflow-wrap: anywhere; }
+  .purchase-conditions { padding: 16px 16px 16px 32px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

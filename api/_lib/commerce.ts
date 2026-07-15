@@ -1,11 +1,12 @@
 import type Stripe from "stripe";
+import { PUBLIC_SALES_CONFIG } from "../../src/public-sales-config";
 import { environment } from "./env";
 
 /** Server-side source of truth for the currently active launch offer. */
 export const ACTIVE_OFFER = {
   currency: "jpy" as const,
   mode: (): "launch" | "regular" => process.env.STRIPE_SALE_PRICE_MODE === "regular" ? "regular" : "launch",
-  amount: (): number => process.env.STRIPE_SALE_PRICE_MODE === "regular" ? 1980 : 980,
+  amount: (): number => process.env.STRIPE_SALE_PRICE_MODE === "regular" ? PUBLIC_SALES_CONFIG.regularPriceYen : PUBLIC_SALES_CONFIG.launchPriceYen,
   priceId: (): string => process.env.STRIPE_SALE_PRICE_MODE === "regular" ? environment("STRIPE_REGULAR_PRICE_ID") : environment("STRIPE_LAUNCH_PRICE_ID"),
 };
 

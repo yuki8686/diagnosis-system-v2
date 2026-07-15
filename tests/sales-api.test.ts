@@ -5,6 +5,7 @@ import { isAccessToken } from "../api/_lib/access-token";
 import { legalConfigurationIsComplete, salesReleaseConfigurationComplete } from "../api/_lib/env";
 import { FEEDBACK_COMMENT_MAX_LENGTH, feedbackPayload } from "../api/_lib/feedback";
 import { accessTokenHash, matchesAccessTokenHash } from "../api/_lib/token";
+import { PUBLIC_SALES_CONFIG } from "../src/public-sales-config";
 
 process.env.STRIPE_LAUNCH_PRICE_ID = "price_launch_980";
 process.env.STRIPE_SALE_PRICE_MODE = "launch";
@@ -33,9 +34,9 @@ assert.equal(isExpectedStoredCheckout({ payment_status: "paid", currency: "jpy",
 process.env.STRIPE_SALE_PRICE_MODE = "regular";
 assert.equal(isExpectedStoredCheckout({ payment_status: "paid", currency: "jpy", amount_total: 980 }, ["price_launch_980"], { priceId: "price_launch_980", amount: 980, currency: "jpy" }), true, "a later campaign-mode change does not invalidate an in-flight paid Checkout");
 process.env.STRIPE_SALE_PRICE_MODE = "launch";
-assert.equal(legalConfigurationIsComplete({ LEGAL_SELLER_NAME: "seller", LEGAL_RESPONSIBLE_PERSON: "owner", LEGAL_ADDRESS: "address", LEGAL_PHONE: "phone", LEGAL_CONTACT_EMAIL: "mail", LEGAL_SUPPORT_HOURS: "hours" }), true, "Checkout may proceed only with all legal display values configured");
+assert.equal(legalConfigurationIsComplete({ LEGAL_SELLER_NAME: "seller", LEGAL_RESPONSIBLE_PERSON: "owner", LEGAL_ADDRESS: "address", LEGAL_PHONE: "phone", LEGAL_CONTACT_EMAIL: PUBLIC_SALES_CONFIG.contactEmail, LEGAL_SUPPORT_HOURS: "hours", LEGAL_EFFECTIVE_DATE: "2026-07-14" }), true, "Checkout may proceed only with all legal display values configured");
 assert.equal(legalConfigurationIsComplete({ LEGAL_SELLER_NAME: "seller" }), false, "missing legal configuration blocks Checkout");
-const productionEnvironment = { LEGAL_SELLER_NAME: "seller", LEGAL_RESPONSIBLE_PERSON: "owner", LEGAL_ADDRESS: "address", LEGAL_PHONE: "phone", LEGAL_CONTACT_EMAIL: "mail", LEGAL_SUPPORT_HOURS: "hours", SERVICE_NAME: "service", DIAGNOSIS_NAME: "diagnosis", PAID_PRODUCT_NAME: "product", MAIN_TYPE_NAMES: "one,two,three,four", SUBTYPE_NAMES: "a,b,c" };
+const productionEnvironment = { LEGAL_SELLER_NAME: "seller", LEGAL_RESPONSIBLE_PERSON: "owner", LEGAL_ADDRESS: "address", LEGAL_PHONE: "phone", LEGAL_CONTACT_EMAIL: PUBLIC_SALES_CONFIG.contactEmail, LEGAL_SUPPORT_HOURS: "hours", LEGAL_EFFECTIVE_DATE: "2026-07-14", SERVICE_NAME: PUBLIC_SALES_CONFIG.diagnosisName, DIAGNOSIS_NAME: PUBLIC_SALES_CONFIG.diagnosisName, PAID_PRODUCT_NAME: PUBLIC_SALES_CONFIG.paidProductName, MAIN_TYPE_NAMES: "one,two,three,four", SUBTYPE_NAMES: "a,b,c" };
 const previousEnvironment = { ...process.env };
 Object.assign(process.env, productionEnvironment);
 assert.equal(salesReleaseConfigurationComplete(), true, "a production release requires legal and final naming configuration");

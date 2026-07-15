@@ -2,6 +2,7 @@
   "rewrites": [
     { "source": "/report/(.*)", "destination": "/" },
     { "source": "/legal", "destination": "/" },
-    { "source": "/terms", "destination": "/" }
+    { "source": "/terms", "destination": "/" },
+    { "source": "/privacy", "destination": "/" }
   ]
 }

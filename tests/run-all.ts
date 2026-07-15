@@ -15,6 +15,7 @@ import "./report-integration.test";
 import "./report-content.test";
 import "./free-report-details.test";
 import "./sales-api.test";
+import "./purchase-availability.test";
 import "./api-http.test";
 import "./type-expression-matrix.test";
 import "./report-engine-e2e.test";

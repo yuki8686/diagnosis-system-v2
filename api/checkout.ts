@@ -1,8 +1,9 @@
 import { ACTIVE_OFFER, isExpectedActivePrice } from "./_lib/commerce";
 import { checkoutRequest } from "./_lib/checkout";
-import { isProductionEnvironment, legalConfigurationComplete, publicAppUrl, salesReleaseConfigurationComplete } from "./_lib/env";
+import { isProductionEnvironment, publicAppUrl, purchaseConfigurationIsComplete } from "./_lib/env";
 import { firestore } from "./_lib/firebase";
 import { json, methodNotAllowed, readJson, type ApiRequest, type ApiResponse } from "./_lib/http";
+import { purchaseUnavailableResponse } from "./_lib/purchase-availability";
 import { isUnexpired, type StoredDiagnosisResult } from "./_lib/result";
 import { stripe } from "./_lib/stripe";
 import { matchesAccessTokenHash } from "./_lib/token";
@@ -10,7 +11,7 @@ import { Timestamp, type DocumentReference } from "firebase-admin/firestore";
 
 export default async function handler(request: ApiRequest, response: ApiResponse): Promise<void> {
   if (request.method !== "POST") return methodNotAllowed(response);
-  if (!legalConfigurationComplete() || (isProductionEnvironment() && !salesReleaseConfigurationComplete())) return json(response, 503, { error: "現在、購入手続きを開始できません。時間をおいてもう一度お試しください。" });
+  if (!purchaseConfigurationIsComplete()) return json(response, 503, purchaseUnavailableResponse(), { "Cache-Control": "no-store" });
   let reservedReference: DocumentReference | undefined;
   try {
     const input = checkoutRequest(await readJson(request, 4_096));
