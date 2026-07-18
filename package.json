@@ -8,7 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "tsx tests/run-all.ts",
-    "report:samples": "tsx scripts/generate-report-samples.ts"
+    "report:samples": "tsx scripts/generate-report-samples.ts",
+    "deploy:cloudflare": "wrangler deploy",
+    "preview:cloudflare": "wrangler versions upload"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.6.0",
@@ -23,6 +25,7 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "tsx": "^4.20.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "wrangler": "^4.112.0"
   }
 }
