@@ -17,6 +17,7 @@ import "./free-report-details.test";
 import "./sales-api.test";
 import "./purchase-availability.test";
 import "./cloudflare-offer-worker.test";
+import "./cloudflare-checkout-worker.test";
 import "./api-http.test";
 import "./type-expression-matrix.test";
 import "./report-engine-e2e.test";
