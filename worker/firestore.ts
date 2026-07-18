@@ -27,6 +27,22 @@ export interface CheckoutStore {
   markCheckoutFailed(reservation: CheckoutReservation): Promise<void>;
 }
 
+export interface ResultSeed {
+  sessionId: string;
+  diagnosisSnapshot: Record<string, unknown>;
+  accessTokenHash: string;
+  reportTemplateVersion: string;
+}
+
+export interface StoredResult {
+  id: string;
+  tokenUsable: boolean;
+}
+
+export interface ResultStore {
+  findOrCreate(seed: ResultSeed): Promise<StoredResult>;
+}
+
 export type FetchImplementation = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export class CheckoutRejectedError extends Error {
@@ -41,10 +57,23 @@ class FirestoreRequestError extends Error {
   }
 }
 
+interface FirestoreMapValue {
+  fields?: Record<string, FirestoreValue>;
+}
+
+interface FirestoreArrayValue {
+  values?: FirestoreValue[];
+}
+
 interface FirestoreValue {
   stringValue?: string;
   integerValue?: string;
   timestampValue?: string;
+  booleanValue?: boolean;
+  doubleValue?: number;
+  nullValue?: null;
+  mapValue?: FirestoreMapValue;
+  arrayValue?: FirestoreArrayValue;
 }
 
 interface FirestoreDocument {
@@ -146,6 +175,20 @@ async function accessTokenHash(token: string, secret: string): Promise<Uint8Arra
   return new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(token)));
 }
 
+function hexString(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function accessTokenHashHex(token: string, secret: string): Promise<string> {
+  return hexString(await accessTokenHash(token, secret));
+}
+
+export function createReportAccessToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return base64Url(bytes);
+}
+
 function hexBytes(value: string): Uint8Array | undefined {
   if (!/^[0-9a-f]{64}$/iu.test(value)) return undefined;
   const bytes = new Uint8Array(value.length / 2);
@@ -161,6 +204,10 @@ export async function matchesAccessTokenHash(token: string, expectedHash: string
   const length = Math.max(actual.length, expected.length);
   for (let index = 0; index < length; index += 1) difference |= (actual[index] ?? 0) ^ (expected[index] ?? 0);
   return difference === 0;
+}
+
+async function sessionIndexId(sessionId: string, secret: string): Promise<string> {
+  return await accessTokenHashHex(`session:${sessionId}`, secret);
 }
 
 async function serviceAccessToken(env: Env, fetchImplementation: FetchImplementation, now: () => number): Promise<string> {
@@ -236,6 +283,48 @@ function updateWrite(documentName: string, fields: Record<string, FirestoreValue
     updateMask: { fieldPaths: Object.keys(fields) },
     currentDocument: updateTime ? { updateTime } : { exists: true },
   };
+}
+
+function createWrite(documentName: string, fields: Record<string, FirestoreValue>): Record<string, unknown> {
+  return { update: { name: documentName, fields }, currentDocument: { exists: false } };
+}
+
+function firestoreValue(value: unknown): FirestoreValue {
+  if (value === null) return { nullValue: null };
+  if (typeof value === "string") return { stringValue: value };
+  if (typeof value === "boolean") return { booleanValue: value };
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new FirestoreRequestError(false);
+    return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
+  }
+  if (Array.isArray(value)) return { arrayValue: { values: value.map(firestoreValue) } };
+  if (isRecord(value)) {
+    const fields: Record<string, FirestoreValue> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      if (nested !== undefined) fields[key] = firestoreValue(nested);
+    }
+    return { mapValue: { fields } };
+  }
+  throw new FirestoreRequestError(false);
+}
+
+export function createResultDocumentFields(seed: ResultSeed, createdAt: number): Record<string, FirestoreValue> {
+  return {
+    sessionId: { stringValue: seed.sessionId },
+    status: { stringValue: "awaiting-payment" },
+    diagnosisSnapshot: firestoreValue(seed.diagnosisSnapshot),
+    accessTokenHash: { stringValue: seed.accessTokenHash },
+    createdAt: timestampValue(createdAt),
+    expiresAt: timestampValue(createdAt + 180 * 24 * 60 * 60 * 1000),
+    answerDataExpiresAt: timestampValue(createdAt + 30 * 24 * 60 * 60 * 1000),
+    feedbackExpiresAt: timestampValue(createdAt + 730 * 24 * 60 * 60 * 1000),
+    schemaVersion: { integerValue: "1" },
+    reportTemplateVersion: { stringValue: seed.reportTemplateVersion },
+  };
+}
+
+function firestoreDocumentName(projectId: string, collection: string, id: string): string {
+  return `projects/${projectId}/databases/${FIRESTORE_DATABASE}/documents/${collection}/${id}`;
 }
 
 export function createFirestoreCheckoutStore(env: Env, fetchImplementation: FetchImplementation = fetch, now: () => number = Date.now): CheckoutStore {
@@ -342,6 +431,120 @@ export function createFirestoreCheckoutStore(env: Env, fetchImplementation: Fetc
     },
     async markCheckoutFailed(reservation): Promise<void> {
       await commit([updateWrite(reservation.documentName, { checkoutCreationState: { stringValue: "failed" } })]);
+    },
+  };
+}
+
+/**
+ * Mirrors the Vercel `findOrCreateResult` transaction.  The session index is
+ * authoritative for idempotency; a generated result ID is never written over
+ * an existing document because both writes use `exists: false` preconditions.
+ */
+export function createFirestoreResultStore(
+  env: Env,
+  fetchImplementation: FetchImplementation = fetch,
+  now: () => number = Date.now,
+  nextResultId: () => string = () => crypto.randomUUID(),
+): ResultStore {
+  const projectId = env.FIREBASE_PROJECT_ID?.trim();
+  const tokenSecret = env.REPORT_ACCESS_TOKEN_SECRET?.trim();
+  if (!projectId || !tokenSecret) throw new FirestoreRequestError(false);
+  let tokenPromise: Promise<string> | undefined;
+  const token = (): Promise<string> => {
+    tokenPromise ??= serviceAccessToken(env, fetchImplementation, now);
+    return tokenPromise;
+  };
+  const apiUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${FIRESTORE_DATABASE}/documents`;
+
+  async function firestoreRequest(path: string, body: Record<string, unknown>): Promise<Response> {
+    let response: Response;
+    try {
+      response = await fetchImplementation(`${apiUrl}${path}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${await token()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      throw new FirestoreRequestError(true);
+    }
+    if (!response.ok) throw new FirestoreRequestError(response.status === 409 || response.status >= 500 || response.status === 429);
+    return response;
+  }
+
+  async function beginTransaction(): Promise<string> {
+    const response = await firestoreRequest(":beginTransaction", {});
+    const payload = await readJson(response);
+    if (!isRecord(payload) || typeof payload.transaction !== "string" || !payload.transaction) throw new FirestoreRequestError(false);
+    return payload.transaction;
+  }
+
+  async function getDocument(transaction: string, documentName: string): Promise<FirestoreDocument | undefined> {
+    const response = await firestoreRequest(":batchGet", { documents: [documentName], transaction });
+    const text = await readLimitedText(response);
+    const lines = text.split(/\r?\n/u).filter(Boolean);
+    if (lines.length !== 1) throw new FirestoreRequestError(false);
+    let payload: unknown;
+    try {
+      payload = JSON.parse(lines[0]) as unknown;
+    } catch {
+      throw new FirestoreRequestError(false);
+    }
+    if (!isRecord(payload)) throw new FirestoreRequestError(false);
+    if (typeof payload.missing === "string") return undefined;
+    const found = payload.found;
+    if (!isRecord(found)) throw new FirestoreRequestError(false);
+    return found as FirestoreDocument;
+  }
+
+  async function commit(writes: Record<string, unknown>[], transaction: string): Promise<void> {
+    const response = await firestoreRequest(":commit", { writes, transaction });
+    await readJson(response);
+  }
+
+  return {
+    async findOrCreate(seed): Promise<StoredResult> {
+      const indexId = await sessionIndexId(seed.sessionId, tokenSecret);
+      const indexName = firestoreDocumentName(projectId, "diagnosisSessionIndex", indexId);
+      for (let attempt = 0; attempt < TRANSACTION_ATTEMPTS; attempt += 1) {
+        const transaction = await beginTransaction();
+        const index = await getDocument(transaction, indexName);
+        if (index) {
+          const existingId = stringField(index, "resultId");
+          if (!existingId) throw new FirestoreRequestError(false);
+          const existingName = firestoreDocumentName(projectId, "diagnosisResults", existingId);
+          const existing = await getDocument(transaction, existingName);
+          if (!existing || existing.name !== existingName) throw new FirestoreRequestError(false);
+          const expiresAt = timestampField(existing, "expiresAt");
+          const tokenUsable = stringField(existing, "status") === "awaiting-payment" && expiresAt !== undefined && expiresAt > now();
+          if (tokenUsable) {
+            try {
+              await commit([updateWrite(existingName, { accessTokenHash: { stringValue: seed.accessTokenHash } }, existing.updateTime)], transaction);
+            } catch (error) {
+              if (error instanceof FirestoreRequestError && error.retryable && attempt + 1 < TRANSACTION_ATTEMPTS) continue;
+              throw error;
+            }
+          }
+          return { id: existingId, tokenUsable };
+        }
+        const resultId = nextResultId();
+        if (!/^[0-9a-f-]{36}$/iu.test(resultId)) throw new FirestoreRequestError(false);
+        const resultName = firestoreDocumentName(projectId, "diagnosisResults", resultId);
+        const createdAt = now();
+        try {
+          await commit([
+            createWrite(resultName, createResultDocumentFields(seed, createdAt)),
+            createWrite(indexName, { resultId: { stringValue: resultId }, createdAt: timestampValue(createdAt) }),
+          ], transaction);
+          return { id: resultId, tokenUsable: true };
+        } catch (error) {
+          if (error instanceof FirestoreRequestError && error.retryable && attempt + 1 < TRANSACTION_ATTEMPTS) continue;
+          throw error;
+        }
+      }
+      throw new FirestoreRequestError(true);
     },
   };
 }
