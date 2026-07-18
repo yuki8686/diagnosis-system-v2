@@ -1,4 +1,5 @@
 import type { Env } from "./env";
+import { versionsMatch, type DiagnosisSession } from "../src/ui/session";
 
 const FIRESTORE_SCOPE = "https://www.googleapis.com/auth/datastore";
 const FIRESTORE_DATABASE = "(default)";
@@ -57,7 +58,29 @@ export interface WebhookCheckout {
 }
 
 export interface WebhookStore {
-  settle(checkout: WebhookCheckout): Promise<"complete" | "ignored">;
+  acquire(checkout: WebhookCheckout): Promise<WebhookAcquisition>;
+  complete(checkout: WebhookCheckout, paidReport: unknown): Promise<void>;
+  fail(checkout: WebhookCheckout): Promise<void>;
+}
+
+export type WebhookAcquisition =
+  | { kind: "complete" | "busy" }
+  | { kind: "acquired"; diagnosisSnapshot: DiagnosisSession };
+
+export type PurchaseStatus = "awaiting-payment" | "generation-pending" | "paid" | "generation-failed" | "expired";
+
+export interface PurchaseStatusStore {
+  findStatus(input: CheckoutInput): Promise<PurchaseStatus | undefined>;
+}
+
+export interface PaidReportRecord {
+  status: string;
+  expiresAt?: number;
+  paidReport?: unknown;
+}
+
+export interface PaidReportStore {
+  findPaidReport(accessTokenHash: string): Promise<PaidReportRecord | undefined>;
 }
 
 export type FetchImplementation = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -332,6 +355,34 @@ function firestoreValue(value: unknown): FirestoreValue {
   throw new FirestoreRequestError(false);
 }
 
+function firestoreData(value: FirestoreValue | undefined): unknown {
+  if (!value) return undefined;
+  if (value.stringValue !== undefined) return value.stringValue;
+  if (value.integerValue !== undefined) return Number(value.integerValue);
+  if (value.timestampValue !== undefined) return value.timestampValue;
+  if (value.booleanValue !== undefined) return value.booleanValue;
+  if (value.doubleValue !== undefined) return value.doubleValue;
+  if (value.nullValue === null) return null;
+  if (value.arrayValue) return (value.arrayValue.values ?? []).map(firestoreData);
+  if (value.mapValue) return Object.fromEntries(Object.entries(value.mapValue.fields ?? {}).map(([key, nested]) => [key, firestoreData(nested)]));
+  return undefined;
+}
+
+function isDiagnosisSnapshot(value: unknown): value is DiagnosisSession {
+  if (!isRecord(value)
+    || typeof value.sessionId !== "string"
+    || typeof value.sessionSeed !== "string"
+    || !Array.isArray(value.answers)
+    || !Array.isArray(value.currentQuestionIds)
+    || !value.currentQuestionIds.every((id) => typeof id === "string")
+    || typeof value.currentPageIndex !== "number"
+    || !Number.isInteger(value.currentPageIndex)
+    || value.currentPageIndex < 0
+    || typeof value.savedAt !== "string"
+    || !versionsMatch(value)) return false;
+  return true;
+}
+
 export function createResultDocumentFields(seed: ResultSeed, createdAt: number): Record<string, FirestoreValue> {
   return {
     sessionId: { stringValue: seed.sessionId },
@@ -573,7 +624,7 @@ export function createFirestoreResultStore(
   };
 }
 
-/** Applies the payment-confirmed, pre-report state used by the Vercel webhook. */
+/** Mirrors the Vercel webhook's acquire, generate, then settle transaction sequence. */
 export function createFirestoreWebhookStore(env: Env, fetchImplementation: FetchImplementation = fetch, now: () => number = Date.now): WebhookStore {
   const projectId = env.FIREBASE_PROJECT_ID?.trim();
   if (!projectId) throw new FirestoreRequestError(false);
@@ -610,39 +661,32 @@ export function createFirestoreWebhookStore(env: Env, fetchImplementation: Fetch
     await readJson(await request(":commit", { writes, transaction }));
   }
   return {
-    async settle(checkout): Promise<"complete" | "ignored"> {
+    async acquire(checkout): Promise<WebhookAcquisition> {
       const eventName = firestoreDocumentName(projectId, "stripeEvents", checkout.eventId);
       const resultName = firestoreDocumentName(projectId, "diagnosisResults", checkout.resultId);
       for (let attempt = 0; attempt < TRANSACTION_ATTEMPTS; attempt += 1) {
         const transaction = await begin();
         const event = await get(transaction, eventName);
-        if (event && timestampField(event, "processedAt") !== undefined) return "complete";
-        if (event && (timestampField(event, "leaseExpiresAt") ?? 0) > now()) return "ignored";
+        if (event && timestampField(event, "processedAt") !== undefined) return { kind: "complete" };
+        if (event && (timestampField(event, "leaseExpiresAt") ?? 0) > now()) return { kind: "busy" };
         const result = await get(transaction, resultName);
-        if (!result || result.name !== resultName) return "ignored";
+        if (!result || result.name !== resultName) throw new FirestoreRequestError(false);
         const status = stringField(result, "status");
         const storedSessionId = stringField(result, "stripeCheckoutSessionId");
         if (status === "paid") {
-          if (storedSessionId !== checkout.checkoutSessionId) return "ignored";
+          if (storedSessionId !== checkout.checkoutSessionId) throw new FirestoreRequestError(false);
           await commit([{
-            update: { name: eventName, fields: { kind: { stringValue: checkout.eventType }, checkoutSessionId: { stringValue: checkout.checkoutSessionId }, status: { stringValue: "processed" }, processedAt: timestampValue(now()) } },
-            updateMask: { fieldPaths: ["kind", "checkoutSessionId", "status", "processedAt"] },
+            update: { name: eventName, fields: { kind: { stringValue: checkout.eventType }, checkoutSessionId: { stringValue: checkout.checkoutSessionId }, processedAt: timestampValue(now()) } },
+            updateMask: { fieldPaths: ["kind", "checkoutSessionId", "processedAt"] },
           }], transaction);
-          return "complete";
-        }
-        if (status === "generation-pending") {
-          if (stringField(result, "fulfillmentEventId") !== checkout.eventId || storedSessionId !== checkout.checkoutSessionId) return "ignored";
-          await commit([{
-            update: { name: eventName, fields: { kind: { stringValue: checkout.eventType }, checkoutSessionId: { stringValue: checkout.checkoutSessionId }, status: { stringValue: "processed" }, processedAt: timestampValue(now()) } },
-            updateMask: { fieldPaths: ["kind", "checkoutSessionId", "status", "processedAt"] },
-          }], transaction);
-          return "complete";
+          return { kind: "complete" };
         }
         const expectedPriceId = stringField(result, "expectedPriceId");
         const expectedAmount = integerField(result, "expectedAmount");
         const expectedCurrency = stringField(result, "expectedCurrency");
         if (status !== "awaiting-payment"
-          || (timestampField(result, "expiresAt") ?? 0) <= now()
+          && status !== "generation-pending") throw new FirestoreRequestError(false);
+        if ((timestampField(result, "expiresAt") ?? 0) <= now()
           || storedSessionId !== checkout.checkoutSessionId
           || !expectedPriceId
           || expectedAmount === undefined
@@ -652,32 +696,161 @@ export function createFirestoreWebhookStore(env: Env, fetchImplementation: Fetch
           || checkout.currency !== expectedCurrency
           || checkout.amountTotal !== expectedAmount
           || checkout.priceIds.length !== 1
-          || checkout.priceIds[0] !== expectedPriceId) return "ignored";
-        const paidAt = now();
-        const leaseExpiresAt = paidAt + CHECKOUT_LEASE_MS;
+          || checkout.priceIds[0] !== expectedPriceId) throw new FirestoreRequestError(false);
+        const diagnosisSnapshot = firestoreData(result.fields?.diagnosisSnapshot);
+        if (!isDiagnosisSnapshot(diagnosisSnapshot)) throw new FirestoreRequestError(false);
+        const acquiredAt = now();
+        const leaseExpiresAt = acquiredAt + CHECKOUT_LEASE_MS;
         const resultFields: Record<string, FirestoreValue> = {
           status: { stringValue: "generation-pending" },
           fulfillmentEventId: { stringValue: checkout.eventId },
           fulfillmentLeaseExpiresAt: timestampValue(leaseExpiresAt),
-          paidAt: timestampValue(paidAt),
-          expiresAt: timestampValue(paidAt + 180 * 24 * 60 * 60 * 1000),
-          answerDataExpiresAt: timestampValue(paidAt + 30 * 24 * 60 * 60 * 1000),
-          feedbackExpiresAt: timestampValue(paidAt + 730 * 24 * 60 * 60 * 1000),
         };
-        if (checkout.paymentIntentId) resultFields.stripePaymentIntentId = { stringValue: checkout.paymentIntentId };
-        const eventFields: Record<string, FirestoreValue> = { kind: { stringValue: checkout.eventType }, checkoutSessionId: { stringValue: checkout.checkoutSessionId }, status: { stringValue: "processed" }, processedAt: timestampValue(paidAt) };
+        const eventFields: Record<string, FirestoreValue> = {
+          kind: { stringValue: checkout.eventType },
+          checkoutSessionId: { stringValue: checkout.checkoutSessionId },
+          status: { stringValue: "processing" },
+          leaseExpiresAt: timestampValue(leaseExpiresAt),
+        };
         try {
           await commit([
             updateWrite(resultName, resultFields, result.updateTime),
             { update: { name: eventName, fields: eventFields }, updateMask: { fieldPaths: Object.keys(eventFields) } },
           ], transaction);
-          return "complete";
+          return { kind: "acquired", diagnosisSnapshot };
         } catch (error) {
           if (error instanceof FirestoreRequestError && error.retryable && attempt + 1 < TRANSACTION_ATTEMPTS) continue;
           throw error;
         }
       }
       throw new FirestoreRequestError(true);
+    },
+    async complete(checkout, paidReport): Promise<void> {
+      const eventName = firestoreDocumentName(projectId, "stripeEvents", checkout.eventId);
+      const resultName = firestoreDocumentName(projectId, "diagnosisResults", checkout.resultId);
+      for (let attempt = 0; attempt < TRANSACTION_ATTEMPTS; attempt += 1) {
+        const transaction = await begin();
+        const result = await get(transaction, resultName);
+        if (!result || result.name !== resultName || stringField(result, "fulfillmentEventId") !== checkout.eventId) throw new FirestoreRequestError(false);
+        const paidAt = now();
+        const resultFields: Record<string, FirestoreValue> = {
+          status: { stringValue: "paid" },
+          paidReport: firestoreValue(paidReport),
+          paidAt: timestampValue(paidAt),
+          expiresAt: timestampValue(paidAt + 180 * 24 * 60 * 60 * 1000),
+          answerDataExpiresAt: timestampValue(paidAt + 30 * 24 * 60 * 60 * 1000),
+          feedbackExpiresAt: timestampValue(paidAt + 730 * 24 * 60 * 60 * 1000),
+        };
+        if (checkout.paymentIntentId) resultFields.stripePaymentIntentId = { stringValue: checkout.paymentIntentId };
+        const eventFields: Record<string, FirestoreValue> = { status: { stringValue: "processed" }, processedAt: timestampValue(paidAt) };
+        try {
+          await commit([
+            updateWrite(resultName, resultFields, result.updateTime),
+            { update: { name: eventName, fields: eventFields }, updateMask: { fieldPaths: Object.keys(eventFields) } },
+          ], transaction);
+          return;
+        } catch (error) {
+          if (error instanceof FirestoreRequestError && error.retryable && attempt + 1 < TRANSACTION_ATTEMPTS) continue;
+          throw error;
+        }
+      }
+      throw new FirestoreRequestError(true);
+    },
+    async fail(checkout): Promise<void> {
+      const eventName = firestoreDocumentName(projectId, "stripeEvents", checkout.eventId);
+      const resultName = firestoreDocumentName(projectId, "diagnosisResults", checkout.resultId);
+      for (let attempt = 0; attempt < TRANSACTION_ATTEMPTS; attempt += 1) {
+        const transaction = await begin();
+        const result = await get(transaction, resultName);
+        if (!result || result.name !== resultName || stringField(result, "fulfillmentEventId") !== checkout.eventId) throw new FirestoreRequestError(false);
+        const paidAt = now();
+        const resultFields: Record<string, FirestoreValue> = {
+          status: { stringValue: "generation-failed" },
+          paidAt: timestampValue(paidAt),
+          expiresAt: timestampValue(paidAt + 180 * 24 * 60 * 60 * 1000),
+          answerDataExpiresAt: timestampValue(paidAt + 30 * 24 * 60 * 60 * 1000),
+          feedbackExpiresAt: timestampValue(paidAt + 730 * 24 * 60 * 60 * 1000),
+        };
+        if (checkout.paymentIntentId) resultFields.stripePaymentIntentId = { stringValue: checkout.paymentIntentId };
+        const eventFields: Record<string, FirestoreValue> = { status: { stringValue: "processed" }, processedAt: timestampValue(paidAt) };
+        try {
+          await commit([
+            updateWrite(resultName, resultFields, result.updateTime),
+            { update: { name: eventName, fields: eventFields }, updateMask: { fieldPaths: Object.keys(eventFields) } },
+          ], transaction);
+          return;
+        } catch (error) {
+          if (error instanceof FirestoreRequestError && error.retryable && attempt + 1 < TRANSACTION_ATTEMPTS) continue;
+          throw error;
+        }
+      }
+      throw new FirestoreRequestError(true);
+    },
+  };
+}
+
+/** Read-only result access for the existing purchase-status and paid-report APIs. */
+export function createFirestorePurchaseStatusStore(env: Env, fetchImplementation: FetchImplementation = fetch, now: () => number = Date.now): PurchaseStatusStore {
+  const projectId = env.FIREBASE_PROJECT_ID?.trim();
+  const tokenSecret = env.REPORT_ACCESS_TOKEN_SECRET?.trim();
+  if (!projectId || !tokenSecret) throw new FirestoreRequestError(false);
+  let tokenPromise: Promise<string> | undefined;
+  const token = (): Promise<string> => tokenPromise ??= serviceAccessToken(env, fetchImplementation, now);
+  const apiUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${FIRESTORE_DATABASE}/documents`;
+  async function getResult(resultId: string): Promise<FirestoreDocument | undefined> {
+    let response: Response;
+    try { response = await fetchImplementation(`${apiUrl}/diagnosisResults/${resultId}`, { headers: { Authorization: `Bearer ${await token()}` } }); }
+    catch { throw new FirestoreRequestError(true); }
+    if (response.status === 404) return undefined;
+    if (!response.ok) throw new FirestoreRequestError(response.status >= 500 || response.status === 429);
+    const payload = await readJson(response);
+    return isRecord(payload) ? payload as FirestoreDocument : undefined;
+  }
+  return {
+    async findStatus(input): Promise<PurchaseStatus | undefined> {
+      const result = await getResult(input.resultId);
+      const storedHash = result ? stringField(result, "accessTokenHash") : undefined;
+      if (!result || !storedHash || !await matchesAccessTokenHash(input.accessToken, storedHash, tokenSecret)) return undefined;
+      const status = stringField(result, "status");
+      if (status !== "awaiting-payment" && status !== "generation-pending" && status !== "paid" && status !== "generation-failed") throw new FirestoreRequestError(false);
+      return (timestampField(result, "expiresAt") ?? 0) > now() ? status : "expired";
+    },
+  };
+}
+
+export function createFirestorePaidReportStore(env: Env, fetchImplementation: FetchImplementation = fetch, now: () => number = Date.now): PaidReportStore {
+  const projectId = env.FIREBASE_PROJECT_ID?.trim();
+  if (!projectId) throw new FirestoreRequestError(false);
+  let tokenPromise: Promise<string> | undefined;
+  const token = (): Promise<string> => tokenPromise ??= serviceAccessToken(env, fetchImplementation, now);
+  const apiUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${FIRESTORE_DATABASE}/documents`;
+  return {
+    async findPaidReport(accessTokenHash): Promise<PaidReportRecord | undefined> {
+      let response: Response;
+      try {
+        response = await fetchImplementation(`${apiUrl}:runQuery`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ structuredQuery: {
+            from: [{ collectionId: "diagnosisResults" }],
+            where: { fieldFilter: { field: { fieldPath: "accessTokenHash" }, op: "EQUAL", value: { stringValue: accessTokenHash } } },
+            limit: 1,
+          } }),
+        });
+      } catch { throw new FirestoreRequestError(true); }
+      if (!response.ok) throw new FirestoreRequestError(response.status >= 500 || response.status === 429);
+      const lines = (await readLimitedText(response)).split(/\r?\n/u).filter(Boolean);
+      const payloads = lines.map((line) => {
+        try { return JSON.parse(line) as unknown; } catch { throw new FirestoreRequestError(false); }
+      });
+      const match = payloads.find((payload): payload is { document: Record<string, unknown> } => isRecord(payload) && isRecord(payload.document));
+      if (!match) return undefined;
+      const document = match.document as FirestoreDocument;
+      return {
+        status: stringField(document, "status") ?? "",
+        expiresAt: timestampField(document, "expiresAt"),
+        paidReport: firestoreData(document.fields?.paidReport),
+      };
     },
   };
 }

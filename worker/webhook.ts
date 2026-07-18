@@ -1,4 +1,5 @@
 import type { Env } from "./env";
+import { paidReportForStoredSession } from "../api/_lib/report";
 import { createFirestoreWebhookStore, type WebhookCheckout, type WebhookStore } from "./firestore";
 import { createStripeWebhookGateway, type StripeWebhookGateway } from "./stripe";
 
@@ -122,7 +123,16 @@ export async function webhookResponse(request: Request, env: Env, dependencies?:
     const priceIds = await activeDependencies.stripe.lineItemPriceIds(tentative.checkoutSessionId);
     const checkout = webhookCheckout(event, priceIds);
     if (!checkout) return jsonResponse(200, { received: true });
-    await activeDependencies.store.settle(checkout);
+    const acquired = await activeDependencies.store.acquire(checkout);
+    if (acquired.kind !== "acquired") return jsonResponse(200, { received: true });
+    let report: ReturnType<typeof paidReportForStoredSession>;
+    try {
+      report = paidReportForStoredSession(acquired.diagnosisSnapshot);
+    } catch {
+      await activeDependencies.store.fail(checkout);
+      return jsonResponse(200, { received: true });
+    }
+    await activeDependencies.store.complete(checkout, report);
     return jsonResponse(200, { received: true });
   } catch { return jsonResponse(500, { error: "Webhook processing failed" }); }
 }

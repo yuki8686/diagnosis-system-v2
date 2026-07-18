@@ -24,12 +24,16 @@ function event(overrides: Record<string, unknown> = {}): string {
 
 class Store implements WebhookStore {
   checkout: WebhookCheckout | undefined;
+  completes = 0;
+  failures = 0;
   constructor(private readonly failure = false) {}
-  async settle(checkout: WebhookCheckout): Promise<"complete" | "ignored"> {
+  async acquire(checkout: WebhookCheckout): Promise<{ kind: "complete" | "busy" }> {
     if (this.failure) throw new Error("FIREBASE_PRIVATE_KEY must not be exposed");
     this.checkout = checkout;
-    return "complete";
+    return { kind: "complete" };
   }
+  async complete(_checkout: WebhookCheckout, _paidReport: unknown): Promise<void> { this.completes += 1; }
+  async fail(_checkout: WebhookCheckout): Promise<void> { this.failures += 1; }
 }
 class Stripe implements StripeWebhookGateway {
   calls = 0;
