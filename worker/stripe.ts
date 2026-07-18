@@ -8,6 +8,10 @@ export interface StripeCheckoutGateway {
   createCheckoutSession(input: CheckoutInput, expected: ExpectedCheckout): Promise<{ id: string; url: string }>;
 }
 
+export interface StripeWebhookGateway {
+  lineItemPriceIds(checkoutSessionId: string): Promise<string[]>;
+}
+
 class StripeRequestError extends Error {
   constructor() {
     super("stripe-request-failed");
@@ -114,6 +118,32 @@ export function createStripeCheckoutGateway(env: Env, fetchImplementation: Fetch
         || typeof session.url !== "string"
         || !checkoutUrlIsValid(session.url)) throw new StripeRequestError();
       return { id: session.id, url: session.url };
+    },
+  };
+}
+
+export function createStripeWebhookGateway(env: Env, fetchImplementation: FetchImplementation = fetch): StripeWebhookGateway {
+  const secretKey = env.STRIPE_SECRET_KEY?.trim();
+  if (!secretKey) throw new StripeRequestError();
+  return {
+    async lineItemPriceIds(checkoutSessionId): Promise<string[]> {
+      let response: Response;
+      try {
+        response = await fetchImplementation(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(checkoutSessionId)}/line_items?limit=2`, {
+          method: "GET",
+          headers: { Authorization: stripeAuthorization(secretKey) },
+        });
+      } catch {
+        throw new StripeRequestError();
+      }
+      if (!response.ok) throw new StripeRequestError();
+      const payload = await readStripeJson(response);
+      if (!isRecord(payload) || !Array.isArray(payload.data)) throw new StripeRequestError();
+      return payload.data.flatMap((item) => {
+        if (!isRecord(item)) return [];
+        if (typeof item.price === "string") return [item.price];
+        return isRecord(item.price) && typeof item.price.id === "string" ? [item.price.id] : [];
+      });
     },
   };
 }

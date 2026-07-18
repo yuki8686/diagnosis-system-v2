@@ -19,6 +19,7 @@ import "./purchase-availability.test";
 import "./cloudflare-offer-worker.test";
 import "./cloudflare-checkout-worker.test";
 import "./cloudflare-results-worker.test";
+import "./cloudflare-webhook-worker.test";
 import "./api-http.test";
 import "./type-expression-matrix.test";
 import "./report-engine-e2e.test";

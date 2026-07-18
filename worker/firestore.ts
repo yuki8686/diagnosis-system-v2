@@ -43,6 +43,23 @@ export interface ResultStore {
   findOrCreate(seed: ResultSeed): Promise<StoredResult>;
 }
 
+export interface WebhookCheckout {
+  eventId: string;
+  eventType: string;
+  checkoutSessionId: string;
+  resultId: string;
+  paymentIntentId?: string;
+  paymentStatus: string;
+  mode: string;
+  currency: string;
+  amountTotal: number;
+  priceIds: string[];
+}
+
+export interface WebhookStore {
+  settle(checkout: WebhookCheckout): Promise<"complete" | "ignored">;
+}
+
 export type FetchImplementation = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export class CheckoutRejectedError extends Error {
@@ -267,6 +284,13 @@ function timestampField(document: FirestoreDocument, name: string): number | und
   if (!value) return undefined;
   const milliseconds = Date.parse(value);
   return Number.isFinite(milliseconds) ? milliseconds : undefined;
+}
+
+function integerField(document: FirestoreDocument, name: string): number | undefined {
+  const value = document.fields?.[name]?.integerValue;
+  if (!value || !/^-?\d+$/u.test(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
 function checkoutDocumentName(projectId: string, resultId: string): string {
@@ -539,6 +563,115 @@ export function createFirestoreResultStore(
             createWrite(indexName, { resultId: { stringValue: resultId }, createdAt: timestampValue(createdAt) }),
           ], transaction);
           return { id: resultId, tokenUsable: true };
+        } catch (error) {
+          if (error instanceof FirestoreRequestError && error.retryable && attempt + 1 < TRANSACTION_ATTEMPTS) continue;
+          throw error;
+        }
+      }
+      throw new FirestoreRequestError(true);
+    },
+  };
+}
+
+/** Applies the payment-confirmed, pre-report state used by the Vercel webhook. */
+export function createFirestoreWebhookStore(env: Env, fetchImplementation: FetchImplementation = fetch, now: () => number = Date.now): WebhookStore {
+  const projectId = env.FIREBASE_PROJECT_ID?.trim();
+  if (!projectId) throw new FirestoreRequestError(false);
+  let tokenPromise: Promise<string> | undefined;
+  const token = (): Promise<string> => {
+    tokenPromise ??= serviceAccessToken(env, fetchImplementation, now);
+    return tokenPromise;
+  };
+  const apiUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${FIRESTORE_DATABASE}/documents`;
+  async function request(path: string, body: Record<string, unknown>): Promise<Response> {
+    let response: Response;
+    try {
+      response = await fetchImplementation(`${apiUrl}${path}`, { method: "POST", headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    } catch { throw new FirestoreRequestError(true); }
+    if (!response.ok) throw new FirestoreRequestError(response.status === 409 || response.status >= 500 || response.status === 429);
+    return response;
+  }
+  async function begin(): Promise<string> {
+    const payload = await readJson(await request(":beginTransaction", {}));
+    if (!isRecord(payload) || typeof payload.transaction !== "string" || !payload.transaction) throw new FirestoreRequestError(false);
+    return payload.transaction;
+  }
+  async function get(transaction: string, name: string): Promise<FirestoreDocument | undefined> {
+    const text = await readLimitedText(await request(":batchGet", { documents: [name], transaction }));
+    const lines = text.split(/\r?\n/u).filter(Boolean);
+    if (lines.length !== 1) throw new FirestoreRequestError(false);
+    let payload: unknown;
+    try { payload = JSON.parse(lines[0]) as unknown; } catch { throw new FirestoreRequestError(false); }
+    if (!isRecord(payload)) throw new FirestoreRequestError(false);
+    if (typeof payload.missing === "string") return undefined;
+    return isRecord(payload.found) ? payload.found as FirestoreDocument : undefined;
+  }
+  async function commit(writes: Record<string, unknown>[], transaction: string): Promise<void> {
+    await readJson(await request(":commit", { writes, transaction }));
+  }
+  return {
+    async settle(checkout): Promise<"complete" | "ignored"> {
+      const eventName = firestoreDocumentName(projectId, "stripeEvents", checkout.eventId);
+      const resultName = firestoreDocumentName(projectId, "diagnosisResults", checkout.resultId);
+      for (let attempt = 0; attempt < TRANSACTION_ATTEMPTS; attempt += 1) {
+        const transaction = await begin();
+        const event = await get(transaction, eventName);
+        if (event && timestampField(event, "processedAt") !== undefined) return "complete";
+        if (event && (timestampField(event, "leaseExpiresAt") ?? 0) > now()) return "ignored";
+        const result = await get(transaction, resultName);
+        if (!result || result.name !== resultName) return "ignored";
+        const status = stringField(result, "status");
+        const storedSessionId = stringField(result, "stripeCheckoutSessionId");
+        if (status === "paid") {
+          if (storedSessionId !== checkout.checkoutSessionId) return "ignored";
+          await commit([{
+            update: { name: eventName, fields: { kind: { stringValue: checkout.eventType }, checkoutSessionId: { stringValue: checkout.checkoutSessionId }, status: { stringValue: "processed" }, processedAt: timestampValue(now()) } },
+            updateMask: { fieldPaths: ["kind", "checkoutSessionId", "status", "processedAt"] },
+          }], transaction);
+          return "complete";
+        }
+        if (status === "generation-pending") {
+          if (stringField(result, "fulfillmentEventId") !== checkout.eventId || storedSessionId !== checkout.checkoutSessionId) return "ignored";
+          await commit([{
+            update: { name: eventName, fields: { kind: { stringValue: checkout.eventType }, checkoutSessionId: { stringValue: checkout.checkoutSessionId }, status: { stringValue: "processed" }, processedAt: timestampValue(now()) } },
+            updateMask: { fieldPaths: ["kind", "checkoutSessionId", "status", "processedAt"] },
+          }], transaction);
+          return "complete";
+        }
+        const expectedPriceId = stringField(result, "expectedPriceId");
+        const expectedAmount = integerField(result, "expectedAmount");
+        const expectedCurrency = stringField(result, "expectedCurrency");
+        if (status !== "awaiting-payment"
+          || (timestampField(result, "expiresAt") ?? 0) <= now()
+          || storedSessionId !== checkout.checkoutSessionId
+          || !expectedPriceId
+          || expectedAmount === undefined
+          || !expectedCurrency
+          || checkout.paymentStatus !== "paid"
+          || checkout.mode !== "payment"
+          || checkout.currency !== expectedCurrency
+          || checkout.amountTotal !== expectedAmount
+          || checkout.priceIds.length !== 1
+          || checkout.priceIds[0] !== expectedPriceId) return "ignored";
+        const paidAt = now();
+        const leaseExpiresAt = paidAt + CHECKOUT_LEASE_MS;
+        const resultFields: Record<string, FirestoreValue> = {
+          status: { stringValue: "generation-pending" },
+          fulfillmentEventId: { stringValue: checkout.eventId },
+          fulfillmentLeaseExpiresAt: timestampValue(leaseExpiresAt),
+          paidAt: timestampValue(paidAt),
+          expiresAt: timestampValue(paidAt + 180 * 24 * 60 * 60 * 1000),
+          answerDataExpiresAt: timestampValue(paidAt + 30 * 24 * 60 * 60 * 1000),
+          feedbackExpiresAt: timestampValue(paidAt + 730 * 24 * 60 * 60 * 1000),
+        };
+        if (checkout.paymentIntentId) resultFields.stripePaymentIntentId = { stringValue: checkout.paymentIntentId };
+        const eventFields: Record<string, FirestoreValue> = { kind: { stringValue: checkout.eventType }, checkoutSessionId: { stringValue: checkout.checkoutSessionId }, status: { stringValue: "processed" }, processedAt: timestampValue(paidAt) };
+        try {
+          await commit([
+            updateWrite(resultName, resultFields, result.updateTime),
+            { update: { name: eventName, fields: eventFields }, updateMask: { fieldPaths: Object.keys(eventFields) } },
+          ], transaction);
+          return "complete";
         } catch (error) {
           if (error instanceof FirestoreRequestError && error.retryable && attempt + 1 < TRANSACTION_ATTEMPTS) continue;
           throw error;
