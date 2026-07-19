@@ -1,9 +1,10 @@
 import { ACTIVE_OFFER, isExpectedActivePrice } from "./_lib/commerce";
 import { checkoutRequest } from "./_lib/checkout";
-import { isProductionEnvironment, publicAppUrl, purchaseConfigurationIsComplete } from "./_lib/env";
+import { publicAppUrl, purchaseConfigurationIsComplete } from "./_lib/env";
 import { firestore } from "./_lib/firebase";
 import { json, methodNotAllowed, readJson, type ApiRequest, type ApiResponse } from "./_lib/http";
 import { purchaseUnavailableResponse } from "./_lib/purchase-availability";
+import { PUBLIC_SALES_CONFIG } from "../src/public-sales-config";
 import { isUnexpired, type StoredDiagnosisResult } from "./_lib/result";
 import { stripe } from "./_lib/stripe";
 import { matchesAccessTokenHash } from "./_lib/token";
@@ -30,7 +31,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     reservedReference = reference;
     const price = await stripe().prices.retrieve(ACTIVE_OFFER.priceId(), { expand: ["product"] });
     const productName = typeof price.product === "object" && price.product && "name" in price.product ? price.product.name : undefined;
-    if (!isExpectedActivePrice(price) || (isProductionEnvironment() && productName !== process.env.PAID_PRODUCT_NAME)) throw new Error("Stripe Price configuration mismatch");
+    if (!isExpectedActivePrice(price) || productName !== PUBLIC_SALES_CONFIG.paidProductName) throw new Error("Stripe Price configuration mismatch");
     const appUrl = publicAppUrl();
     const checkout = await stripe().checkout.sessions.create({
       mode: "payment",

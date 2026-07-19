@@ -7,6 +7,7 @@ import { publicPurchaseAvailability, PURCHASE_PREPARING_MESSAGE } from "../api/_
 import type { ApiRequest, ApiResponse } from "../api/_lib/http";
 import offerHandler from "../api/offer";
 import { PUBLIC_SALES_CONFIG } from "../src/public-sales-config";
+import { legalDisclosureConfigurationIsComplete } from "../src/sales-configuration";
 import { LegalNoticePage } from "../src/ui/components/LegalNoticePage";
 import { legalEffectiveDate } from "../src/ui/components/LegalDocumentDate";
 import { PaidReportOffer } from "../src/ui/components/PaidReportOffer";
@@ -15,6 +16,8 @@ import { PurchasePendingScreen } from "../src/ui/components/PurchasePendingScree
 import { TermsPage } from "../src/ui/components/TermsPage";
 import { legalLinks } from "../src/ui/legal-links";
 import { canStartCheckout, purchaseOfferViewModel, PURCHASE_PREPARING_COPY } from "../src/ui/purchase-offer";
+import { purchaseConfigurationIsComplete as workerPurchaseConfigurationIsComplete } from "../worker/offer";
+import type { Env } from "../worker/env";
 
 const completeEnvironment = {
   STRIPE_SECRET_KEY: "sk_test_not-a-real-secret",
@@ -26,18 +29,8 @@ const completeEnvironment = {
   FIREBASE_CLIENT_EMAIL: "server@example.test",
   FIREBASE_PRIVATE_KEY: "not-a-real-private-key",
   REPORT_ACCESS_TOKEN_SECRET: "x".repeat(32),
-  LEGAL_SELLER_NAME: "seller",
-  LEGAL_RESPONSIBLE_PERSON: "responsible",
-  LEGAL_ADDRESS: "address",
-  LEGAL_PHONE: "phone",
+  LEGAL_DISCLOSURE_MODE: "on-request",
   LEGAL_CONTACT_EMAIL: PUBLIC_SALES_CONFIG.contactEmail,
-  LEGAL_SUPPORT_HOURS: "hours",
-  LEGAL_EFFECTIVE_DATE: "2026-07-14",
-  SERVICE_NAME: PUBLIC_SALES_CONFIG.diagnosisName,
-  DIAGNOSIS_NAME: PUBLIC_SALES_CONFIG.diagnosisName,
-  PAID_PRODUCT_NAME: PUBLIC_SALES_CONFIG.paidProductName,
-  MAIN_TYPE_NAMES: "main names",
-  SUBTYPE_NAMES: "subtype names",
 } satisfies Record<string, string>;
 
 const requiredForLaunch = [
@@ -49,18 +42,8 @@ const requiredForLaunch = [
   "FIREBASE_CLIENT_EMAIL",
   "FIREBASE_PRIVATE_KEY",
   "REPORT_ACCESS_TOKEN_SECRET",
-  "LEGAL_SELLER_NAME",
-  "LEGAL_RESPONSIBLE_PERSON",
-  "LEGAL_ADDRESS",
-  "LEGAL_PHONE",
+  "LEGAL_DISCLOSURE_MODE",
   "LEGAL_CONTACT_EMAIL",
-  "LEGAL_SUPPORT_HOURS",
-  "LEGAL_EFFECTIVE_DATE",
-  "SERVICE_NAME",
-  "DIAGNOSIS_NAME",
-  "PAID_PRODUCT_NAME",
-  "MAIN_TYPE_NAMES",
-  "SUBTYPE_NAMES",
 ] as const;
 
 assert.equal(purchaseConfigurationIsComplete(completeEnvironment), true, "complete launch sales configuration enables Checkout");
@@ -71,6 +54,51 @@ assert.equal(purchaseConfigurationIsComplete({ ...completeEnvironment, PUBLIC_AP
 assert.equal(purchaseConfigurationIsComplete({ ...completeEnvironment, REPORT_ACCESS_TOKEN_SECRET: "too-short" }), false, "an insufficient access-token secret cannot enable Checkout");
 assert.equal(purchaseConfigurationIsComplete({ ...completeEnvironment, STRIPE_SALE_PRICE_MODE: "regular" }), false, "regular mode requires the regular Price ID");
 assert.equal(purchaseConfigurationIsComplete({ ...completeEnvironment, STRIPE_SALE_PRICE_MODE: "regular", STRIPE_REGULAR_PRICE_ID: "price_regular_1980" }), true, "regular mode uses its dedicated Price ID");
+assert.equal(purchaseConfigurationIsComplete({ ...completeEnvironment, LEGAL_SELLER_NAME: undefined, LEGAL_RESPONSIBLE_PERSON: undefined, LEGAL_ADDRESS: undefined, LEGAL_PHONE: undefined }), true, "on-request disclosure does not require undisclosed seller details");
+assert.equal(purchaseConfigurationIsComplete({ ...completeEnvironment, LEGAL_CONTACT_EMAIL: "" }), false, "on-request disclosure fails closed without the approved contact address");
+assert.equal(purchaseConfigurationIsComplete({ ...completeEnvironment, LEGAL_CONTACT_EMAIL: "other@example.test" }), false, "on-request disclosure fails closed when the contact address does not exactly match the public legal notice");
+assert.equal(purchaseConfigurationIsComplete({ ...completeEnvironment, LEGAL_DISCLOSURE_MODE: "unknown" }), false, "unknown disclosure modes fail closed");
+const publicDisclosure = {
+  LEGAL_DISCLOSURE_MODE: "public",
+  LEGAL_CONTACT_EMAIL: PUBLIC_SALES_CONFIG.contactEmail,
+  LEGAL_SELLER_NAME: "seller",
+  LEGAL_RESPONSIBLE_PERSON: "responsible",
+  LEGAL_ADDRESS: "address",
+  LEGAL_PHONE: "phone",
+};
+assert.equal(legalDisclosureConfigurationIsComplete(publicDisclosure, "public"), true, "public disclosure requires all seller details");
+for (const name of ["LEGAL_SELLER_NAME", "LEGAL_RESPONSIBLE_PERSON", "LEGAL_ADDRESS", "LEGAL_PHONE"] as const) {
+  for (const value of [undefined, "", "   "]) {
+    assert.equal(legalDisclosureConfigurationIsComplete({ ...publicDisclosure, [name]: value }, "public"), false, `${name} cannot be missing or blank in public disclosure mode`);
+  }
+}
+const testAssets: Env["ASSETS"] = {
+  fetch: async () => new Response(),
+  connect: () => { throw new Error("ASSETS.connect is not used by this test"); },
+};
+const completeWorkerEnvironment = {
+  ASSETS: testAssets,
+  ...completeEnvironment,
+} satisfies Env;
+const legacyEnvironmentValues = {
+  LEGAL_SUPPORT_HOURS: "legacy hours",
+  LEGAL_EFFECTIVE_DATE: "2026-07-19",
+  SERVICE_NAME: "legacy service",
+  DIAGNOSIS_NAME: "legacy diagnosis",
+  PAID_PRODUCT_NAME: "legacy product",
+  MAIN_TYPE_NAMES: "legacy main names",
+  SUBTYPE_NAMES: "legacy subtype names",
+};
+assert.equal(purchaseConfigurationIsComplete({ ...completeEnvironment, ...legacyEnvironmentValues }), true, "retired legal and naming values do not affect Vercel purchase availability");
+assert.equal(workerPurchaseConfigurationIsComplete({ ...completeWorkerEnvironment, ...legacyEnvironmentValues }), true, "retired legal and naming values do not affect Worker purchase availability");
+for (const values of [
+  completeEnvironment,
+  { ...completeEnvironment, LEGAL_CONTACT_EMAIL: "" },
+  { ...completeEnvironment, LEGAL_CONTACT_EMAIL: "other@example.test" },
+  { ...completeEnvironment, LEGAL_DISCLOSURE_MODE: "unknown" },
+]) {
+  assert.equal(workerPurchaseConfigurationIsComplete({ ...completeWorkerEnvironment, ...values }), purchaseConfigurationIsComplete(values), "Worker and Vercel use the same legal-disclosure purchase-availability decision");
+}
 
 const unavailable = publicPurchaseAvailability({});
 assert.deepEqual(unavailable, { purchaseAvailable: false, purchaseStatus: "preparing", purchaseMessage: PURCHASE_PREPARING_MESSAGE }, "missing server configuration is publicly reported only as preparing");
@@ -123,6 +151,8 @@ for (const [name, markup] of [["commercial disclosure", legalMarkup], ["terms", 
   assert.doesNotMatch(markup, new RegExp(`${["公開", "準備中"].join("")}|${["正式本文は", "未公開"].join("")}`), `${name} contains no temporary publication copy`);
 }
 assert.match(legalMarkup, /本音キャラ診断 詳細レポート/, "the commercial disclosure uses the approved paid product name");
+assert.equal(PUBLIC_SALES_CONFIG.legalDisclosureMode, "on-request", "the declared sale configuration uses the approved on-request disclosure policy");
+assert.match(legalMarkup, /請求があった場合に遅滞なく電子メールにて提供/, "the commercial disclosure visibly explains the on-request seller-detail policy");
 assert.match(legalMarkup, /980円/, "the launch price is disclosed");
 assert.match(legalMarkup, /1,980円/, "the regular price is disclosed");
 assert.match(legalMarkup, /予定販売件数に達し次第終了/, "the launch offer ending condition is disclosed without its internal target count");

@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { questionBank } from "../src/data/question-bank";
-import { characterDisplayCopyForLabel, LABEL_TEMPLATES } from "../src/report/templates/labels";
+import { CANONICAL_CHARACTER_NAMES, CANONICAL_MAIN_TYPE_NAMES, CANONICAL_SUBTYPE_NAMES, characterDisplayCopyForLabel, LABEL_TEMPLATES } from "../src/report/templates/labels";
 import { scoreExpression } from "../src/scoring";
 import { EXPRESSION_IDS, TYPE_IDS, type AnswerRecord, type ExpressionId, type QuestionDefinition } from "../src/types";
 
@@ -35,6 +35,9 @@ const expectedCharacterNames = expectedCharacterCopies.map((copy) => copy.charac
 
 assert.deepEqual(TYPE_IDS, ["win", "connect", "analyze", "axis"], "the four stored type IDs stay unchanged");
 assert.deepEqual(EXPRESSION_IDS, ["outward", "inward", "adaptive"], "the three stored expression IDs stay unchanged");
+assert.deepEqual(CANONICAL_MAIN_TYPE_NAMES, ["勝ち筋タイプ", "つながりタイプ", "読み解きタイプ", "軸タイプ"], "main type display names come from the canonical code constants in stored-ID order");
+assert.deepEqual(CANONICAL_SUBTYPE_NAMES, ["打ち出す型", "内に燃やす型", "使い分け型"], "expression display names come from the canonical code constants in stored-ID order");
+assert.deepEqual(CANONICAL_CHARACTER_NAMES, expectedCharacterNames, "all 12 character names and their order come from the canonical report templates");
 for (const type of TYPE_IDS) {
   const questions = questionBank.byType[type].expression;
   const confirmationIds = questions.filter((question) => question.isConfirmation && question.polarity === "switch").map((question) => question.id) as [string, string];

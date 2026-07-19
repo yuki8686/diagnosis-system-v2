@@ -1,5 +1,5 @@
 import { EXPRESSION_LABELS, TYPE_LABELS } from "../../constants";
-import type { Confidence, ExpressionId, TypeId } from "../../types";
+import { EXPRESSION_IDS, TYPE_IDS, type Confidence, type ExpressionId, type TypeId } from "../../types";
 
 export type LabelTemplateKey = `${TypeId}:${ExpressionId}`;
 
@@ -359,6 +359,10 @@ export function conditionTemplate(type: TypeId, expression: ExpressionId): Condi
 export function characterNameFor(type: TypeId, expression: ExpressionId): string {
   return labelTemplate(type, expression).characterName;
 }
+
+export const CANONICAL_MAIN_TYPE_NAMES = TYPE_IDS.map((type) => TYPE_LABELS[type]);
+export const CANONICAL_SUBTYPE_NAMES = EXPRESSION_IDS.map((expression) => EXPRESSION_LABELS[expression]);
+export const CANONICAL_CHARACTER_NAMES = TYPE_IDS.flatMap((type) => EXPRESSION_IDS.map((expression) => characterNameFor(type, expression)));
 
 export function characterDisplayCopyForLabel(label: string): CharacterDisplayCopy | undefined {
   for (const [key, template] of Object.entries(LABEL_TEMPLATES) as Array<[LabelTemplateKey, LabelReportTemplate]>) {

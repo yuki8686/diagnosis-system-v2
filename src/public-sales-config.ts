@@ -1,5 +1,6 @@
 export const PUBLIC_SALES_CONFIG = {
   operatorName: "本音キャラ診断運営局",
+  legalDisclosureMode: "on-request",
   diagnosisName: "本音キャラ診断",
   freeProductName: "本音キャラ診断 無料結果",
   paidProductName: "本音キャラ診断 詳細レポート",

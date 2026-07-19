@@ -1,3 +1,4 @@
+import { PUBLIC_SALES_CONFIG } from "../src/public-sales-config";
 import type { Env } from "./env";
 import type { CheckoutInput, ExpectedCheckout, FetchImplementation } from "./firestore";
 
@@ -73,8 +74,8 @@ function stripeAuthorization(secretKey: string): string {
 export function createStripeCheckoutGateway(env: Env, fetchImplementation: FetchImplementation = fetch): StripeCheckoutGateway {
   const secretKey = env.STRIPE_SECRET_KEY?.trim();
   const appUrl = env.PUBLIC_APP_URL?.trim();
-  const paidProductName = env.PAID_PRODUCT_NAME?.trim();
-  if (!secretKey || !appUrl || !paidProductName) throw new StripeRequestError();
+  if (!secretKey || !appUrl) throw new StripeRequestError();
+  const paidProductName = PUBLIC_SALES_CONFIG.paidProductName;
   const headers = { Authorization: stripeAuthorization(secretKey) };
 
   async function stripeRequest(url: string, init: RequestInit): Promise<unknown> {

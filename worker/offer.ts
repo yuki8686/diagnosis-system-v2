@@ -1,25 +1,8 @@
 import { PUBLIC_SALES_CONFIG } from "../src/public-sales-config";
+import { hasNonBlankValue, legalConfigurationIsComplete as legalConfigurationIsCompleteForDisclosure } from "../src/sales-configuration";
 import type { Env, EnvironmentVariable } from "./env";
 
 const PURCHASE_PREPARING_MESSAGE = "有料レポートは現在準備中です。販売開始までお待ちください。";
-
-const legalFields = [
-  "LEGAL_SELLER_NAME",
-  "LEGAL_RESPONSIBLE_PERSON",
-  "LEGAL_ADDRESS",
-  "LEGAL_PHONE",
-  "LEGAL_CONTACT_EMAIL",
-  "LEGAL_SUPPORT_HOURS",
-  "LEGAL_EFFECTIVE_DATE",
-] as const satisfies readonly EnvironmentVariable[];
-
-const salesNameFields = [
-  "SERVICE_NAME",
-  "DIAGNOSIS_NAME",
-  "PAID_PRODUCT_NAME",
-  "MAIN_TYPE_NAMES",
-  "SUBTYPE_NAMES",
-] as const satisfies readonly EnvironmentVariable[];
 
 const infrastructureFields = [
   "STRIPE_SECRET_KEY",
@@ -41,21 +24,11 @@ export interface PublicOffer {
 }
 
 function hasValue(env: Env, name: EnvironmentVariable): boolean {
-  return Boolean(env[name]?.trim());
+  return hasNonBlankValue(env[name]);
 }
 
 function legalConfigurationIsComplete(env: Env): boolean {
-  if (!legalFields.every((name) => hasValue(env, name))) return false;
-  if (env.LEGAL_CONTACT_EMAIL?.trim().toLowerCase() !== PUBLIC_SALES_CONFIG.contactEmail) return false;
-  const effectiveDate = env.LEGAL_EFFECTIVE_DATE?.trim() ?? "";
-  return /^\d{4}-\d{2}-\d{2}$/.test(effectiveDate) && !Number.isNaN(Date.parse(`${effectiveDate}T00:00:00Z`));
-}
-
-function salesNamesAreFinal(env: Env): boolean {
-  return salesNameFields.every((name) => hasValue(env, name))
-    && env.SERVICE_NAME?.trim() === PUBLIC_SALES_CONFIG.diagnosisName
-    && env.DIAGNOSIS_NAME?.trim() === PUBLIC_SALES_CONFIG.diagnosisName
-    && env.PAID_PRODUCT_NAME?.trim() === PUBLIC_SALES_CONFIG.paidProductName;
+  return legalConfigurationIsCompleteForDisclosure(env);
 }
 
 function configuredPublicAppUrlIsValid(value: string | undefined): boolean {
@@ -76,8 +49,7 @@ export function purchaseConfigurationIsComplete(env: Env): boolean {
   if (![...infrastructureFields, activePriceId].every((name) => hasValue(env, name))) return false;
   if ((env.REPORT_ACCESS_TOKEN_SECRET?.trim().length ?? 0) < 32) return false;
   return configuredPublicAppUrlIsValid(env.PUBLIC_APP_URL)
-    && legalConfigurationIsComplete(env)
-    && salesNamesAreFinal(env);
+    && legalConfigurationIsComplete(env);
 }
 
 export function createPublicOffer(env: Env): PublicOffer {
