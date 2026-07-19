@@ -2,43 +2,51 @@
 
 ## 1. この資料の目的
 
-この資料は、診断システムver.2のCloudflare Worker **Test環境**を人手で構成するための設定手順です。Production設定ではありません。
+この資料は、診断システムver.2のCloudflare Worker **Test環境**の設定と確認済みのE2E結果を記録する資料です。Production設定ではありません。
 
 - 実値、メールアドレス、秘密鍵、Secret Key、Webhook署名Secretはこの資料へ記録しない。
 - StripeはTest Modeだけを使う。
 - 本番販売導線とProduction環境は変更しない。
-- Test E2Eが完了するまで、VercelからCloudflareへ本番経路を切り替えない。
+- Test E2Eは完了している。Production公開は、別途の外部設定と公開判断が完了するまで行わない。
 
 ## 2. 現在の実装状態
 
-- 移植コミット: `a97d266` (`Migrate paid report delivery to Cloudflare Worker`)
-- Worker実装と `wrangler deploy --dry-run --env test` は完了している。
-- Test Worker環境`diagnosis-system-v2-test`の分離設定はコミット・push済みである。
-- Cloudflare Test環境には、Firebase 3件、Stripe 4件、`REPORT_ACCESS_TOKEN_SECRET`の計8 Secretが登録済みである。値はこの資料へ記録しない。
-- `LEGAL_DISCLOSURE_MODE`、`LEGAL_CONTACT_EMAIL`、`PUBLIC_APP_URL`、`STRIPE_WEBHOOK_SECRET`は未登録である。今回の法務方針に関して次に登録を検討するのは前2件である。
-- Cloudflare Workerの実デプロイは未実施である。
-- 実Stripe Test E2Eは未実施である。
-- Vercel APIは残っており、既存の販売経路である可能性がある。
-- CloudflareとVercelのWebhookを同時に有効化してはならない。両者は同じ`diagnosisResults`と`stripeEvents`、5分の処理リースを扱う。
+- 移植の基礎コミット: `a97d266` (`Migrate paid report delivery to Cloudflare Worker`)
+- Firestore応答処理の修正と回帰テスト: `798801e` (`Fix Cloudflare Firestore response handling`)
+- Cloudflareアカウントは確認済みで、Account ID末尾は`3810`である。
+- Test Worker環境`diagnosis-system-v2-test`は分離済みで、Test公開URLが発行されている。
+- Static Assets配信、SPAルーティング、`/api/*`のWorkerルーティングを確認済みである。
+- Test環境には、現在の`on-request`販売方式で必要な12件のSecretが登録済みである。値はこの資料へ記録しない。
+- Stripe Test Modeで、980円・JPY・一回払いのCheckoutを完了した。Webhook署名検証、`checkout.session.completed`の処理、Firestore保存、有料レポート生成、専用URL閲覧、再読み込み、改変・無効token拒否、購入完了日から180日の失効日時保存を確認済みである。
+- Test E2Eで作成したFirestoreデータは削除済みである。
+- Production Workerは未デプロイであり、Stripe Live設定およびCloudflare Production Secretは未設定である。
+- 旧Vercel APIのソースは互換性・履歴のため残るが、Productionでは使用しない予定である。
+
+### Firestore応答処理の回帰対策
+
+- Firestore REST APIの応答が64 KiBを超える場合、Checkout結果の読出しが失敗する事象を確認した。
+- Checkoutでは必要なフィールドだけを取得するよう修正した。
+- 有料レポート生成用の完全な結果読出しには、有限の2 MiB上限を設けた。
+- Firestoreの整形JSON、配列、NDJSON応答を正規化し、回帰テストを追加した。
 
 ## 3. 環境変数一覧
 
-`worker/env.ts`に定義される`ASSETS`以外の**12件**を対象とし、販売可否判定は`worker/offer.ts`の`purchaseConfigurationIsComplete()`で行われる。型上はすべて任意だが、下表の「Checkout有効化」で必須となる値が不足すると、`/api/offer`は準備中、`/api/results`と`/api/checkout`はfail-closedで拒否する。
+`worker/env.ts`に定義される値のうち、現行の`on-request`方式で使う**12件**を対象とする。`public`方式へ変更する場合だけ、販売者情報4件が追加で必要になる。販売可否判定は`worker/offer.ts`の`purchaseConfigurationIsComplete()`で行われる。型上はすべて任意だが、下表の「Checkout有効化」で必須となる値が不足すると、`/api/offer`は準備中、`/api/results`と`/api/checkout`はfail-closedで拒否する。
 
-| 変数名 | Secret/Variable | Test用の取得元 | Productionとの差 | Worker内の用途 | 未設定時の挙動 | 設定時の注意 |
+| 変数名 | Testでの登録先 | Test用の取得元 | Productionとの差 | Worker内の用途 | 未設定時の挙動 | 設定時の注意 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `FIREBASE_PROJECT_ID` | Variable | 既存Firebase/Google Cloud Project（公開前Test E2Eに限る） | 今回は一時利用。公開後は分離を再検討 | Firestore REST APIのProject指定 | 購入有効化不可、Firestore処理不可 | Testデータを公開前に全削除する前提。別Projectが原則として安全 |
-| `FIREBASE_CLIENT_EMAIL` | Variable（運用方針でSecret可） | 上記Projectで使うサービスアカウント | 今回は一時利用。公開後は分離を再検討 | サービスアカウントJWTの`iss` | 購入有効化不可、Firestore処理不可 | 実値を資料・スクリーンショットへ残さない |
+| `FIREBASE_PROJECT_ID` | Secret | 既存Firebase/Google Cloud Project（公開前Test E2Eに限る） | 今回は一時利用。公開後は分離を再検討 | Firestore REST APIのProject指定 | 購入有効化不可、Firestore処理不可 | Testデータを公開前に全削除する前提。別Projectが原則として安全 |
+| `FIREBASE_CLIENT_EMAIL` | Secret | 上記Projectで使うサービスアカウント | 今回は一時利用。公開後は分離を再検討 | サービスアカウントJWTの`iss` | 購入有効化不可、Firestore処理不可 | 実値を資料・スクリーンショットへ残さない |
 | `FIREBASE_PRIVATE_KEY` | Secret | 上記サービスアカウントのPrivate Key | Production鍵と分離 | JWT署名、Firestore REST API認証 | 購入有効化不可、Firestore処理不可 | JSON全体ではなく鍵の値だけを登録。`\\n`は実改行へ変換される |
 | `REPORT_ACCESS_TOKEN_SECRET` | Secret | Test専用に安全な乱数で生成 | Production値と必ず分離 | access tokenのHMAC-SHA256、所有証明 | 32文字未満または未設定なら購入有効化不可。閲覧・購入状態確認も失敗 | 32文字以上。リポジトリ、ログ、画面共有へ残さない |
 | `STRIPE_SECRET_KEY` | Secret | Stripe DashboardのTest Mode Secret Key | Live Mode Keyと分離 | Price検証、Checkout Session作成、line item取得 | 購入有効化不可。Webhookでline item取得不可 | Test Mode表示を確認して取得 |
-| `STRIPE_WEBHOOK_SECRET` | Secret | Cloudflare Test Worker用Webhook endpointの署名Secret | Production endpointのSecretと分離 | `Stripe-Signature`のWeb Crypto検証 | 購入有効化不可、`/api/webhook`は503 | endpoint作成後に確定する。初回デプロイ時は未設定でよい |
-| `STRIPE_LAUNCH_PRICE_ID` | Variable | Stripe Test Modeのlaunch用one-time Price | Live Price IDと分離 | launch時のPrice、金額・通貨照合 | launch時に未設定なら購入有効化不可 | Test ModeのJPY・商品名を確認 |
-| `STRIPE_REGULAR_PRICE_ID` | Variable | Stripe Test Modeのregular用one-time Price | Live Price IDと分離 | regular時のPrice、金額・通貨照合 | regular時に未設定なら購入有効化不可 | launch Test中でも将来切替用に確認しておく |
-| `STRIPE_SALE_PRICE_MODE` | Variable | 人間が`launch`または`regular`を決定 | Productionの販売モードと独立管理 | 有効Priceと表示価格の切替 | 未設定・`regular`以外は実装上launch扱い | 曖昧さを避け、Testでは明示的に設定 |
-| `PUBLIC_APP_URL` | Variable | Test Workerが静的SPAを配信するHTTPS origin | Productionドメインを使わない | Stripe success/cancel URL | 購入有効化不可 | 末尾`/`なしのoriginを登録。コードは末尾に`/?`を付加する |
-| `LEGAL_DISCLOSURE_MODE` | Variable | `on-request` | Test/Productionとも公開法務ページの方針と一致 | 販売可否判定 | 未設定・未知値・公開ページと不一致なら購入有効化不可 | 現在の確定方針は`on-request`。`public`へ変える場合は法務ページとコードを同時に変更する |
-| `LEGAL_CONTACT_EMAIL` | Variable（運用方針でSecret可） | 公開設定`PUBLIC_SALES_CONFIG.contactEmail`と一致する値 | Production公開値と照合 | 販売可否判定 | 不一致・未設定なら購入有効化不可 | コード上、公開設定と完全一致が必要。人間が実際に請求を受け付けられることも確認する |
+| `STRIPE_WEBHOOK_SECRET` | Secret | Cloudflare Test Worker用Webhook endpointの署名Secret | Production endpointのSecretと分離 | `Stripe-Signature`のWeb Crypto検証 | 購入有効化不可、`/api/webhook`は503 | Test endpointの設定後に登録済み。Productionでは別のSecretを使う |
+| `STRIPE_LAUNCH_PRICE_ID` | Secret | Stripe Test Modeのlaunch用one-time Price | Live Price IDと分離 | launch時のPrice、金額・通貨照合 | launch時に未設定なら購入有効化不可 | Test ModeのJPY・商品名を確認 |
+| `STRIPE_REGULAR_PRICE_ID` | Secret | Stripe Test Modeのregular用one-time Price | Live Price IDと分離 | regular時のPrice、金額・通貨照合 | regular時に未設定なら購入有効化不可 | launch Test中でも将来切替用に確認しておく |
+| `STRIPE_SALE_PRICE_MODE` | Secret | 人間が`launch`または`regular`を決定 | Productionの販売モードと独立管理 | 有効Priceと表示価格の切替 | 未設定・`regular`以外は実装上launch扱い | 曖昧さを避け、Testでは明示的に設定 |
+| `PUBLIC_APP_URL` | Secret | Test Workerが静的SPAを配信するHTTPS origin | Productionドメインを使わない | Stripe success/cancel URL | 購入有効化不可 | 末尾`/`なしのoriginを登録。コードは末尾に`/?`を付加する |
+| `LEGAL_DISCLOSURE_MODE` | Secret | `on-request` | Test/Productionとも公開法務ページの方針と一致 | 販売可否判定 | 未設定・未知値・公開ページと不一致なら購入有効化不可 | 現在の確定方針は`on-request`。`public`へ変える場合は法務ページとコードを同時に変更する |
+| `LEGAL_CONTACT_EMAIL` | Secret | 公開設定`PUBLIC_SALES_CONFIG.contactEmail`と一致する値 | Production公開値と照合 | 販売可否判定 | 不一致・未設定なら購入有効化不可 | コード上、公開設定と完全一致が必要。人間が実際に請求を受け付けられることも確認する |
 
 ### 必須・任意の整理
 
@@ -77,16 +85,13 @@
 - Cloudflare Workerには`/api/feedback`が未移植である。Cloudflare Test E2Eだけなら通常`resultFeedback`は作成されない。
 - 旧Vercel APIを経由した場合は`resultFeedback/{resultId}`が作成される可能性があるため、削除確認対象に含める。
 
-## 5. Stripe Test設定
+## 5. Stripe Test設定と確認結果
 
-- `STRIPE_SECRET_KEY`にはStripe Dashboardの**Test Mode** Secret Keyだけを登録する。
-- `STRIPE_LAUNCH_PRICE_ID`と`STRIPE_REGULAR_PRICE_ID`は、いずれもTest Modeのone-time Priceを確認する。TestとLiveのIDは外見が似ていても混在させない。
-- Workerが受け付けるイベントは`checkout.session.completed`だけである。処理前後で`payment_status=paid`、`mode=payment`、Session ID、metadataの`resultId`、保存済みPrice ID、金額、通貨、line item数を照合する。
-- Priceについて、JPY、想定金額、one-time、Product名（`PUBLIC_SALES_CONFIG.paidProductName`と一致）を確認する。Checkout作成時にWorkerもStripe APIで再検証する。
-- Cloudflare Test Workerを初回デプロイしてURLを確認した**後**、Test ModeでWebhook endpointを作成する。対象eventは`checkout.session.completed`だけに絞る。
-- endpoint作成後に得た署名Secretを`STRIPE_WEBHOOK_SECRET`へ登録し、再デプロイまたはCloudflareのSecret反映方法を人間が確認する。
-- Test中のVercel endpointの扱いは、Stripe DashboardでCloudflare Test endpointと同一のTest決済イベントを同時に受信しないよう運用する。既存Vercel endpointの変更・停止は、この資料作成時点では行わない。
-- Test決済後はStripe DashboardからWebhook再送を実施し、同一eventでレポートが二重生成されないことを確認する。
+- `STRIPE_SECRET_KEY`、`STRIPE_LAUNCH_PRICE_ID`、`STRIPE_REGULAR_PRICE_ID`、`STRIPE_SALE_PRICE_MODE`は、Test Mode専用の値として登録済みである。TestとLiveの値は混在させない。
+- `PUBLIC_APP_URL`と`STRIPE_WEBHOOK_SECRET`もTest Worker用として登録済みである。値やTest公開URLはこの資料へ記録しない。
+- Workerが受け付けるイベントは`checkout.session.completed`だけである。Test E2Eで、Webhook署名、`payment_status=paid`、`mode=payment`、Session ID、metadataの`resultId`、保存済みPrice ID、金額、通貨、line item数の照合を通過した。
+- 980円・JPY・一回払いのTest Checkoutを確認済みである。Checkout作成時には、WorkerがPriceの通貨、金額、one-time、Product名（`PUBLIC_SALES_CONFIG.paidProductName`と一致）を再検証する。
+- 将来のLive移行時は、同じStripeイベントを複数の有効なWebhook endpointで並行処理しない。
 
 ## 6. `REPORT_ACCESS_TOKEN_SECRET`
 
@@ -123,26 +128,20 @@
 
 未設定・形式不正・名称不一致では、購入CTAは「準備中」となり、結果作成とCheckout作成は販売準備中として拒否される。
 
-## 9. 推奨設定順序
+## 9. Production公開前の残作業
 
-1. 使用するCloudflareアカウントを確認し、Productionアカウント・Workerと混同しない。
-2. Worker名とTest環境名を決める。Production用の既存名称を誤用しない。
-3. 今回一時利用する既存Firebase Projectに本番データがないこと、Test期間中に本番書込みを開始しないこと、サービスアカウントの最小権限を確認する。原則としてはTest専用Projectが安全であり、公開後のTest運用では分離を再検討する。
-4. Stripe DashboardがTest Modeであることを確認し、launch/regularのPrice、商品名、金額、通貨を確認する。
-5. Secret以外のVariableを登録する。`STRIPE_SALE_PRICE_MODE`は明示的に設定し、`LEGAL_DISCLOSURE_MODE`は現在の公開ページと同じ`on-request`、`LEGAL_CONTACT_EMAIL`は公開設定と一致する問い合わせ先、`PUBLIC_APP_URL`は末尾`/`なしのTest HTTPS originを使う。
-6. `FIREBASE_PRIVATE_KEY`、`REPORT_ACCESS_TOKEN_SECRET`、`STRIPE_SECRET_KEY`をSecretとして登録する。初回はWebhook Secret未設定でもよい。
-7. `npx wrangler deploy --dry-run`を再実行する。
-8. Test Workerへ初回デプロイし、Worker URLと静的SPAを確認する。
-9. `PUBLIC_APP_URL`で指定したTest origin、`/terms`、`/privacy`、`/legal`、`/api/offer`を確認する。
-10. Stripe Test ModeでCloudflare Test Worker向けWebhook endpointを作成し、`checkout.session.completed`だけを購読する。
-11. endpointの署名Secretを`STRIPE_WEBHOOK_SECRET`へ登録する。Secret反映後、`/api/offer`が購入可能と表示される条件を再確認する。
-12. 実Stripe Test E2Eを実施する。
-13. Stripe DashboardからWebhook再送を行い、二重生成がないことを確認する。
-14. Workerログに秘密情報がないことを確認する。
-15. Firestoreの保存結果、status、`paidAt`、期限、event記録を確認する。
-16. 公開前に、Test E2E台帳に記録した対象を削除し、4コレクションの削除確認を完了する。Testデータを残したまま本番書込みを開始しない。
+Test環境の構築、E2E、Testデータ削除は完了している。Production公開は、以下を順に完了するまで行わない。
 
-Webhook Secretはendpoint作成後にしか得られないため、手順6〜8は購入がfail-closedのまま行う。endpoint作成後の手順10〜11でSecretを追加し、初めてWebhookを受け付けられる状態にする。
+1. `/privacy`のWeb/API提供基盤の表記をCloudflare構成へ修正する（今回の更新で完了）。
+2. Production Firebase Project、Firestore Database、サービスアカウント、最小権限、Security Rulesを確定する。
+3. Productionで使う公開originを決定する。
+4. Stripe Liveの商品、Price、Webhook endpointを作成・照合する。
+5. Cloudflare Production専用のSecretとVariableを登録する。Testの値は流用しない。
+6. Production Workerをデプロイする。
+7. Stripe LiveのE2Eを実施する。
+8. 公開判定を行う。
+
+今回の更新では、手順1だけを完了扱いにする。手順2以降は未完了である。
 
 ## 10. Test E2E台帳と公開前の削除確認
 
@@ -161,10 +160,12 @@ Webhook処理完了確認：
 
 ### 削除前の停止条件
 
+今回のTest E2Eでは、次を確認したうえで削除を完了している。
+
 - Test期間中に本番書込みを開始していない。
 - Webhook処理が終了し、`generation-pending`または有効な処理リースが残っていない。
 - Test E2Eで使った`resultId`、Checkout Session ID、Stripe Event IDを台帳で確認できる。
-- CloudflareとVercelが同じTest決済イベントを並行処理していない。
+- 同じStripe Testイベントを複数の有効なWebhook endpointで並行処理していない。
 
 ### 削除チェックリスト
 
@@ -177,65 +178,38 @@ Webhook処理完了確認：
 
 現実装はFirestoreにTest/Productionを示す保存フィールドを持たない。上記の削除手順は、今回の「本番データがゼロで、公開前に削除する」例外運用に限って安全である。公開後に時刻やStripe IDだけでTestデータを抽出する運用は推奨しない。
 
-## 11. 実Stripe Test E2Eチェックリスト
+## 11. 実Stripe Test E2Eの確認済み結果
 
-- [ ] 無料診断を完了できる
-- [ ] Checkout Sessionを作成できる
-- [ ] Stripe Testカードで決済できる
-- [ ] `checkout.session.completed` Webhookを受信できる
-- [ ] 決済前の結果が`awaiting-payment`である
-- [ ] 生成中に`generation-pending`になる
-- [ ] 生成成功後に`paid`になる
-- [ ] 購入完了ポーリングが成功する
-- [ ] 有料レポートを閲覧できる
-- [ ] 別ブラウザ相当で専用URLを閲覧できる
-- [ ] 不正tokenは汎用404になる
-- [ ] 未払い状態は汎用404になる
-- [ ] 生成中状態は汎用404になる
-- [ ] 生成失敗状態は汎用404になる
-- [ ] 期限切れは汎用404になる
-- [ ] Webhook再送で二重生成されない
-- [ ] `paidAt`を確認した
-- [ ] `expiresAt`が`paidAt`から180日後である
-- [ ] 回答データ期限が30日後である
-- [ ] feedback期限が730日後である
-- [ ] Price IDが保存済みの期待値と一致する
-- [ ] 金額が期待値と一致する
-- [ ] 通貨がJPYで一致する
-- [ ] metadataの`resultId`が一致する
-- [ ] Stripe Test Modeの値だけを使用している
-- [ ] Workerログに秘密情報がない
-- [ ] Firestoreに不要な秘密情報がない
-- [ ] UIの購入完了導線が正常に動く
+- [x] 無料診断結果を作成できた
+- [x] Checkout Sessionを作成し、Stripe Test Modeで980円・JPY・一回払いの決済を完了した
+- [x] `checkout.session.completed`を受信し、Webhook署名検証と決済情報の照合を通過した
+- [x] Firestoreへ購入情報と有料レポート情報を保存した
+- [x] 有料レポートを専用URLで表示し、再読み込みでも確認した
+- [x] 改変・無効tokenを拒否した
+- [x] `paidAt`から180日後の失効日時を保存した
+- [x] Test E2Eで作成したFirestoreデータを削除した
 
-## 12. VercelからCloudflareへの将来切替手順（まだ実行しない）
+未記載の観測項目を追加で確認する必要がある場合は、Production設定と混在させず、別のTest E2Eとして台帳を作成して実施する。
 
-1. Cloudflare Test E2E、Webhook再送、Firestore確認が完了するまでProductionを変更しない。
-2. 切替日時を決め、必要なら新規決済を一時停止する案を決定する。
-3. 切替直前に、Vercelの処理中Webhook、`stripeEvents`、`generation-pending`を確認する。
-4. 旧Webhookが取得した5分の処理リースが失効し、処理済みイベントが安定したことを確認する。
-5. Stripeの旧Vercel Webhook endpointを停止する。
-6. Cloudflare側endpointを有効化する。両endpointを同時に有効化しない。
-7. 少額の確認に相当するTest確認または承認済みの限定確認を行う。
-8. エラー時の切り戻し条件（署名検証失敗、Firestore書込み失敗、二重生成疑い、購入完了画面不達）を確認する。
-9. 切り戻す場合も、Cloudflare endpointを停止してリース状態を確認してからVercel側だけを有効化する。二重稼働は避ける。
-
-## 13. 人間が入力・確認する欄
+## 12. 人間が入力・確認する欄
 
 以下には状態だけを記録し、値そのものは記入しない。
 
 ```text
 Cloudflareアカウント確認：確認済み
 Cloudflare Test Worker名確認：`diagnosis-system-v2-test`
-Firebase Project一時利用の前提確認：未確認
-Test期間中の本番書込み停止確認：未確認
-Firebase最小権限確認：未確認
-Stripe Mode確認：未確認
-Price金額・通貨・商品確認：未確認
-Webhook endpoint確認：未確認
-PUBLIC_APP_URL確認：未確認
-Test E2E実施：未実施
-Webhook再送確認：未実施
+Test公開URL、Static Assets、APIルーティング確認：確認済み
+Test用Secret登録：確認済み
+Stripe Test Mode、980円・JPY・一回払い確認：確認済み
+Webhook endpointと署名検証確認：確認済み
+PUBLIC_APP_URL確認：確認済み
+Test E2E実施：完了
+Test Firestoreデータ削除：完了
+Production Firebase確定：未確認
+Production公開origin決定：未確認
+Stripe Live設定：未確認
+Cloudflare Production Secret登録：未実施
+Production Workerデプロイ：未実施
 ```
 
 ## 資料の根拠
