@@ -11,6 +11,7 @@ import type { Env } from "../worker/env";
 import {
   CheckoutRejectedError,
   createResultDocumentFields,
+  firestoreJsonPayloads,
   matchesAccessTokenHash,
   type CheckoutInput,
   type CheckoutReservation,
@@ -199,6 +200,11 @@ assert.equal(schema.answerDataExpiresAt?.timestampValue, "2026-08-17T00:00:00.00
 assert.equal(schema.feedbackExpiresAt?.timestampValue, "2028-07-17T00:00:00.000Z", "feedback expiry remains 730 days");
 assert.equal(schema.accessTokenHash?.stringValue, schemaSeed.accessTokenHash, "Firestore stores only the HMAC hash");
 assert.equal(JSON.stringify(schema).includes("accessToken"), true, "schema exposes the field name only, not a plaintext access token");
+assert.deepEqual(firestoreJsonPayloads('{\n  "missing": "projects/test/databases/(default)/documents/diagnosisSessionIndex/id"\n}'), [{ missing: "projects/test/databases/(default)/documents/diagnosisSessionIndex/id" }], "formatted Firestore REST JSON is parsed as one batch-get payload");
+assert.deepEqual(firestoreJsonPayloads(")]}'\n{\n  \"missing\": \"projects/test/databases/(default)/documents/diagnosisSessionIndex/id\"\n}"), [{ missing: "projects/test/databases/(default)/documents/diagnosisSessionIndex/id" }], "Firestore REST XSSI prefixes are removed before formatted JSON parsing");
+assert.deepEqual(firestoreJsonPayloads(")]}' ,\n{\n  \"missing\": \"projects/test/databases/(default)/documents/diagnosisSessionIndex/id\"\n}"), [{ missing: "projects/test/databases/(default)/documents/diagnosisSessionIndex/id" }], "non-JSON response prefixes are removed before formatted Firestore REST JSON parsing");
+assert.deepEqual(firestoreJsonPayloads('[\n  { "missing": "projects/test/databases/(default)/documents/diagnosisSessionIndex/id" }\n]'), [{ missing: "projects/test/databases/(default)/documents/diagnosisSessionIndex/id" }], "Firestore REST JSON arrays are normalized into batch-get payloads");
+assert.deepEqual(firestoreJsonPayloads('{"missing":"first"}\n{"missing":"second"}'), [{ missing: "first" }, { missing: "second" }], "newline-delimited Firestore REST payloads remain supported");
 
 const persistence = new InMemoryFirestore(TEST_SECRET);
 const completed = completedSession();

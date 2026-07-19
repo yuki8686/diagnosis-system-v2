@@ -5,7 +5,20 @@ const FIRESTORE_SCOPE = "https://www.googleapis.com/auth/datastore";
 const FIRESTORE_DATABASE = "(default)";
 const CHECKOUT_LEASE_MS = 5 * 60 * 1000;
 const TRANSACTION_ATTEMPTS = 5;
-const MAX_EXTERNAL_RESPONSE_BYTES = 64 * 1024;
+// A Firestore result document includes the immutable diagnosis snapshot used
+// for paid-report generation. Keep a finite limit while allowing a complete
+// Firestore document response (whose REST JSON envelope can exceed 64 KiB).
+const MAX_EXTERNAL_RESPONSE_BYTES = 2 * 1024 * 1024;
+const CHECKOUT_RESULT_FIELD_PATHS = [
+  "accessTokenHash",
+  "status",
+  "expiresAt",
+  "checkoutCreationState",
+  "checkoutCreationStartedAt",
+  "stripeCheckoutSessionId",
+] as const;
+const RESULT_INDEX_FIELD_PATHS = ["resultId"] as const;
+const EXISTING_RESULT_FIELD_PATHS = ["accessTokenHash", "status", "expiresAt"] as const;
 
 export interface CheckoutInput {
   resultId: string;
@@ -193,6 +206,35 @@ async function readLimitedText(response: Response): Promise<string> {
     offset += chunk.byteLength;
   }
   return new TextDecoder().decode(bytes);
+}
+
+export function firestoreJsonPayloads(text: string): unknown[] {
+  const trimmed = text.trim();
+  const firstJson = trimmed.search(/[\[{]/u);
+  const json = firstJson > 0 ? trimmed.slice(firstJson) : trimmed;
+  if (!json) return [];
+  try {
+    const payload = JSON.parse(json) as unknown;
+    return Array.isArray(payload) ? payload : [payload];
+  } catch {
+    const lines = json.split(/\r?\n/u).filter(Boolean);
+    try {
+      return lines.flatMap((line) => {
+        const payload = JSON.parse(line) as unknown;
+        return Array.isArray(payload) ? payload : [payload];
+      });
+    } catch {
+      throw new FirestoreRequestError(false);
+    }
+  }
+}
+
+function batchGetDocument(text: string): FirestoreDocument | undefined {
+  const payloads = firestoreJsonPayloads(text);
+  if (payloads.length !== 1 || !isRecord(payloads[0])) throw new FirestoreRequestError(false);
+  const payload = payloads[0] as FirestoreBatchGetResponse;
+  if (typeof payload.missing === "string") return undefined;
+  return isRecord(payload.found) ? payload.found as FirestoreDocument : undefined;
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -437,22 +479,13 @@ export function createFirestoreCheckoutStore(env: Env, fetchImplementation: Fetc
     return payload.transaction;
   }
 
-  async function getDocument(transaction: string, documentName: string): Promise<FirestoreDocument | undefined> {
-    const response = await firestoreRequest(":batchGet", { documents: [documentName], transaction });
-    const text = await readLimitedText(response);
-    const lines = text.split(/\r?\n/u).filter(Boolean);
-    if (lines.length !== 1) throw new FirestoreRequestError(false);
-    let payload: unknown;
-    try {
-      payload = JSON.parse(lines[0]) as unknown;
-    } catch {
-      throw new FirestoreRequestError(false);
-    }
-    if (!isRecord(payload)) throw new FirestoreRequestError(false);
-    if (typeof payload.missing === "string") return undefined;
-    const found = payload.found;
-    if (!isRecord(found)) throw new FirestoreRequestError(false);
-    return found as FirestoreDocument;
+  async function getDocument(transaction: string, documentName: string, fieldPaths: readonly string[] = CHECKOUT_RESULT_FIELD_PATHS): Promise<FirestoreDocument | undefined> {
+    const response = await firestoreRequest(":batchGet", {
+      documents: [documentName],
+      transaction,
+      mask: { fieldPaths },
+    });
+    return batchGetDocument(await readLimitedText(response));
   }
 
   async function commit(writes: Record<string, unknown>[], transaction?: string): Promise<void> {
@@ -556,22 +589,13 @@ export function createFirestoreResultStore(
     return payload.transaction;
   }
 
-  async function getDocument(transaction: string, documentName: string): Promise<FirestoreDocument | undefined> {
-    const response = await firestoreRequest(":batchGet", { documents: [documentName], transaction });
-    const text = await readLimitedText(response);
-    const lines = text.split(/\r?\n/u).filter(Boolean);
-    if (lines.length !== 1) throw new FirestoreRequestError(false);
-    let payload: unknown;
-    try {
-      payload = JSON.parse(lines[0]) as unknown;
-    } catch {
-      throw new FirestoreRequestError(false);
-    }
-    if (!isRecord(payload)) throw new FirestoreRequestError(false);
-    if (typeof payload.missing === "string") return undefined;
-    const found = payload.found;
-    if (!isRecord(found)) throw new FirestoreRequestError(false);
-    return found as FirestoreDocument;
+  async function getDocument(transaction: string, documentName: string, fieldPaths?: readonly string[]): Promise<FirestoreDocument | undefined> {
+    const response = await firestoreRequest(":batchGet", {
+      documents: [documentName],
+      transaction,
+      ...(fieldPaths ? { mask: { fieldPaths } } : {}),
+    });
+    return batchGetDocument(await readLimitedText(response));
   }
 
   async function commit(writes: Record<string, unknown>[], transaction: string): Promise<void> {
@@ -585,12 +609,12 @@ export function createFirestoreResultStore(
       const indexName = firestoreDocumentName(projectId, "diagnosisSessionIndex", indexId);
       for (let attempt = 0; attempt < TRANSACTION_ATTEMPTS; attempt += 1) {
         const transaction = await beginTransaction();
-        const index = await getDocument(transaction, indexName);
+        const index = await getDocument(transaction, indexName, RESULT_INDEX_FIELD_PATHS);
         if (index) {
           const existingId = stringField(index, "resultId");
           if (!existingId) throw new FirestoreRequestError(false);
           const existingName = firestoreDocumentName(projectId, "diagnosisResults", existingId);
-          const existing = await getDocument(transaction, existingName);
+          const existing = await getDocument(transaction, existingName, EXISTING_RESULT_FIELD_PATHS);
           if (!existing || existing.name !== existingName) throw new FirestoreRequestError(false);
           const expiresAt = timestampField(existing, "expiresAt");
           const tokenUsable = stringField(existing, "status") === "awaiting-payment" && expiresAt !== undefined && expiresAt > now();
@@ -648,14 +672,7 @@ export function createFirestoreWebhookStore(env: Env, fetchImplementation: Fetch
     return payload.transaction;
   }
   async function get(transaction: string, name: string): Promise<FirestoreDocument | undefined> {
-    const text = await readLimitedText(await request(":batchGet", { documents: [name], transaction }));
-    const lines = text.split(/\r?\n/u).filter(Boolean);
-    if (lines.length !== 1) throw new FirestoreRequestError(false);
-    let payload: unknown;
-    try { payload = JSON.parse(lines[0]) as unknown; } catch { throw new FirestoreRequestError(false); }
-    if (!isRecord(payload)) throw new FirestoreRequestError(false);
-    if (typeof payload.missing === "string") return undefined;
-    return isRecord(payload.found) ? payload.found as FirestoreDocument : undefined;
+    return batchGetDocument(await readLimitedText(await request(":batchGet", { documents: [name], transaction })));
   }
   async function commit(writes: Record<string, unknown>[], transaction: string): Promise<void> {
     await readJson(await request(":commit", { writes, transaction }));
@@ -839,10 +856,7 @@ export function createFirestorePaidReportStore(env: Env, fetchImplementation: Fe
         });
       } catch { throw new FirestoreRequestError(true); }
       if (!response.ok) throw new FirestoreRequestError(response.status >= 500 || response.status === 429);
-      const lines = (await readLimitedText(response)).split(/\r?\n/u).filter(Boolean);
-      const payloads = lines.map((line) => {
-        try { return JSON.parse(line) as unknown; } catch { throw new FirestoreRequestError(false); }
-      });
+      const payloads = firestoreJsonPayloads(await readLimitedText(response));
       const match = payloads.find((payload): payload is { document: Record<string, unknown> } => isRecord(payload) && isRecord(payload.document));
       if (!match) return undefined;
       const document = match.document as FirestoreDocument;
