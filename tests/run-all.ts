@@ -21,6 +21,7 @@ import "./cloudflare-checkout-worker.test";
 import "./cloudflare-results-worker.test";
 import "./cloudflare-webhook-worker.test";
 import "./cloudflare-paid-report-worker.test";
+import "./cloudflare-feedback-worker.test";
 import "./api-http.test";
 import "./type-expression-matrix.test";
 import "./report-engine-e2e.test";

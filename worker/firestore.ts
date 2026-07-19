@@ -96,6 +96,19 @@ export interface PaidReportStore {
   findPaidReport(accessTokenHash: string): Promise<PaidReportRecord | undefined>;
 }
 
+export interface FeedbackInput {
+  resultId: string;
+  accessToken: string;
+  rating: 1 | 2 | 3 | 4 | 5;
+  comment?: string;
+}
+
+export type FeedbackSaveResult = "saved" | "missing" | "invalid-token" | "expired" | "already-exists";
+
+export interface FeedbackStore {
+  save(input: FeedbackInput): Promise<FeedbackSaveResult>;
+}
+
 export type FetchImplementation = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export class CheckoutRejectedError extends Error {
@@ -865,6 +878,73 @@ export function createFirestorePaidReportStore(env: Env, fetchImplementation: Fe
         expiresAt: timestampField(document, "expiresAt"),
         paidReport: firestoreData(document.fields?.paidReport),
       };
+    },
+  };
+}
+
+export function createFeedbackDocumentFields(input: FeedbackInput, createdAt: number, expiresAt: number): Record<string, FirestoreValue> {
+  return {
+    version: { integerValue: "1" },
+    resultId: { stringValue: input.resultId },
+    rating: { integerValue: String(input.rating) },
+    ...(input.comment ? { comment: { stringValue: input.comment } } : {}),
+    createdAt: timestampValue(createdAt),
+    expiresAt: timestampValue(expiresAt),
+  };
+}
+
+/** Writes one feedback document per result, without storing the access token. */
+export function createFirestoreFeedbackStore(env: Env, fetchImplementation: FetchImplementation = fetch, now: () => number = Date.now): FeedbackStore {
+  const projectId = env.FIREBASE_PROJECT_ID?.trim();
+  const tokenSecret = env.REPORT_ACCESS_TOKEN_SECRET?.trim();
+  if (!projectId || !tokenSecret) throw new FirestoreRequestError(false);
+  let tokenPromise: Promise<string> | undefined;
+  const token = (): Promise<string> => tokenPromise ??= serviceAccessToken(env, fetchImplementation, now);
+  const apiUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${FIRESTORE_DATABASE}/documents`;
+
+  async function getResult(resultId: string): Promise<FirestoreDocument | undefined> {
+    let response: Response;
+    try {
+      response = await fetchImplementation(`${apiUrl}/diagnosisResults/${encodeURIComponent(resultId)}?mask.fieldPaths=accessTokenHash&mask.fieldPaths=feedbackExpiresAt`, {
+        headers: { Authorization: `Bearer ${await token()}` },
+      });
+    } catch {
+      throw new FirestoreRequestError(true);
+    }
+    if (response.status === 404) return undefined;
+    if (!response.ok) throw new FirestoreRequestError(response.status >= 500 || response.status === 429);
+    const payload = await readJson(response);
+    return isRecord(payload) ? payload as FirestoreDocument : undefined;
+  }
+
+  return {
+    async save(input): Promise<FeedbackSaveResult> {
+      const result = await getResult(input.resultId);
+      const storedHash = result ? stringField(result, "accessTokenHash") : undefined;
+      if (!result || !storedHash) return "missing";
+      if (!await matchesAccessTokenHash(input.accessToken, storedHash, tokenSecret)) return "invalid-token";
+      const expiresAt = timestampField(result, "feedbackExpiresAt");
+      if (expiresAt === undefined || expiresAt <= now()) return "expired";
+
+      let response: Response;
+      try {
+        response = await fetchImplementation(`${apiUrl}:commit`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            writes: [createWrite(
+              firestoreDocumentName(projectId, "resultFeedback", input.resultId),
+              createFeedbackDocumentFields(input, now(), expiresAt),
+            )],
+          }),
+        });
+      } catch {
+        throw new FirestoreRequestError(true);
+      }
+      if (response.status === 409) return "already-exists";
+      if (!response.ok) throw new FirestoreRequestError(response.status >= 500 || response.status === 429);
+      await readJson(response);
+      return "saved";
     },
   };
 }

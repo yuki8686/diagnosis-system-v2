@@ -4,7 +4,7 @@ import { handleRequest } from "../worker";
 import type { CheckoutDependencies } from "../worker/checkout";
 import type { Env } from "../worker/env";
 import { CheckoutRejectedError, matchesAccessTokenHash, type CheckoutInput, type CheckoutReservation, type CheckoutStore, type ExpectedCheckout } from "../worker/firestore";
-import type { StripeCheckoutGateway } from "../worker/stripe";
+import { createStripeCheckoutGateway, type StripeCheckoutGateway } from "../worker/stripe";
 import { PUBLIC_SALES_CONFIG } from "../src/public-sales-config";
 
 const resultId = "11111111-1111-4111-8111-111111111111";
@@ -150,5 +150,37 @@ assert.deepEqual(await unavailableResponse.json(), {
 const methodResponse = await handleRequest(new Request("https://worker.example.test/api/checkout"), completeEnv());
 assert.equal(methodResponse.status, 405, "non-POST checkout methods are rejected");
 assert.equal(methodResponse.headers.get("Allow"), "POST", "checkout 405 responses declare POST");
+
+function stripePriceResponse(productName: string): Response {
+  return new Response(JSON.stringify({
+    id: "price_launch_980",
+    type: "one_time",
+    currency: "jpy",
+    unit_amount: 980,
+    product: { name: productName },
+  }), { headers: { "Content-Type": "application/json" } });
+}
+
+const launchProductGateway = createStripeCheckoutGateway(completeEnv(), async () => stripePriceResponse("本音キャラ診断 詳細レポート（開始記念価格）"));
+await assert.doesNotReject(
+  launchProductGateway.verifyActivePrice({ priceId: "price_launch_980", amount: 980, currency: "jpy" }),
+  "the separate launch product is accepted while exact Price, amount, currency, and one-time checks remain enforced",
+);
+const regularProductGateway = createStripeCheckoutGateway(completeEnv(), async () => new Response(JSON.stringify({
+  id: "price_regular_1980",
+  type: "one_time",
+  currency: "jpy",
+  unit_amount: 1980,
+  product: { name: "本音キャラ診断 詳細レポート（通常価格）" },
+}), { headers: { "Content-Type": "application/json" } }));
+await assert.doesNotReject(
+  regularProductGateway.verifyActivePrice({ priceId: "price_regular_1980", amount: 1980, currency: "jpy" }),
+  "the separate regular product is accepted",
+);
+const wrongProductGateway = createStripeCheckoutGateway(completeEnv(), async () => stripePriceResponse("別の商品"));
+await assert.rejects(
+  wrongProductGateway.verifyActivePrice({ priceId: "price_launch_980", amount: 980, currency: "jpy" }),
+  "an unrelated Stripe Product remains rejected",
+);
 
 console.log("Cloudflare checkout Worker ownership, lease, Stripe, and fail-closed tests passed");

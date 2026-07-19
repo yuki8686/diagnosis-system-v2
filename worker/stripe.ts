@@ -3,6 +3,8 @@ import type { Env } from "./env";
 import type { CheckoutInput, ExpectedCheckout, FetchImplementation } from "./firestore";
 
 const MAX_STRIPE_RESPONSE_BYTES = 64 * 1024;
+const LAUNCH_STRIPE_PRODUCT_NAME = "本音キャラ診断 詳細レポート（開始記念価格）";
+const REGULAR_STRIPE_PRODUCT_NAME = "本音キャラ診断 詳細レポート（通常価格）";
 
 export interface StripeCheckoutGateway {
   verifyActivePrice(expected: ExpectedCheckout): Promise<void>;
@@ -71,11 +73,21 @@ function stripeAuthorization(secretKey: string): string {
   return `Basic ${btoa(`${secretKey}:`)}`;
 }
 
+function expectedProductNames(expected: ExpectedCheckout): readonly string[] {
+  const internalProductName = expected.amount === PUBLIC_SALES_CONFIG.launchPriceYen
+    ? LAUNCH_STRIPE_PRODUCT_NAME
+    : expected.amount === PUBLIC_SALES_CONFIG.regularPriceYen
+      ? REGULAR_STRIPE_PRODUCT_NAME
+      : undefined;
+  return internalProductName
+    ? [PUBLIC_SALES_CONFIG.paidProductName, internalProductName]
+    : [PUBLIC_SALES_CONFIG.paidProductName];
+}
+
 export function createStripeCheckoutGateway(env: Env, fetchImplementation: FetchImplementation = fetch): StripeCheckoutGateway {
   const secretKey = env.STRIPE_SECRET_KEY?.trim();
   const appUrl = env.PUBLIC_APP_URL?.trim();
   if (!secretKey || !appUrl) throw new StripeRequestError();
-  const paidProductName = PUBLIC_SALES_CONFIG.paidProductName;
   const headers = { Authorization: stripeAuthorization(secretKey) };
 
   async function stripeRequest(url: string, init: RequestInit): Promise<unknown> {
@@ -98,7 +110,8 @@ export function createStripeCheckoutGateway(env: Env, fetchImplementation: Fetch
         || price.currency !== expected.currency
         || price.unit_amount !== expected.amount
         || !isRecord(price.product)
-        || price.product.name !== paidProductName) throw new StripeRequestError();
+        || typeof price.product.name !== "string"
+        || !expectedProductNames(expected).includes(price.product.name)) throw new StripeRequestError();
     },
     async createCheckoutSession(input, expected): Promise<{ id: string; url: string }> {
       const form = new URLSearchParams({

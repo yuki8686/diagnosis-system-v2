@@ -16,10 +16,10 @@
 - Cloudflareアカウントは確認済みで、Account ID末尾は`3810`である。
 - Test Worker環境`diagnosis-system-v2-test`は分離済みで、Test公開URLが発行されている。
 - Static Assets配信、SPAルーティング、`/api/*`のWorkerルーティングを確認済みである。
-- Test環境には、現在の`on-request`販売方式で必要な12件のSecretが登録済みである。値はこの資料へ記録しない。
+- Test E2E完了後、Production Firestoreへの接続を遮断するためFirebase 3 Secretを削除した。Test WorkerにはFirebase以外の9件のSecretが残るが、結果作成・Checkout・feedback・有料レポートはFirebase不足によりfail-closedとなる。
 - Stripe Test Modeで、980円・JPY・一回払いのCheckoutを完了した。Webhook署名検証、`checkout.session.completed`の処理、Firestore保存、有料レポート生成、専用URL閲覧、再読み込み、改変・無効token拒否、購入完了日から180日の失効日時保存を確認済みである。
 - Test E2Eで作成したFirestoreデータは削除済みである。
-- Production Workerは未デプロイであり、Stripe Live設定およびCloudflare Production Secretは未設定である。
+- Production WorkerはCloudflare標準URLでデプロイ済みである。ProductionにはFirebase、公開origin、法務開示、Production専用report access tokenが設定済みで、Stripe Live設定は未完了のため購入導線は準備中である。
 - 旧Vercel APIのソースは互換性・履歴のため残るが、Productionでは使用しない予定である。
 
 ### Firestore応答処理の回帰対策
@@ -35,9 +35,9 @@
 
 | 変数名 | Testでの登録先 | Test用の取得元 | Productionとの差 | Worker内の用途 | 未設定時の挙動 | 設定時の注意 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `FIREBASE_PROJECT_ID` | Secret | 既存Firebase/Google Cloud Project（公開前Test E2Eに限る） | 今回は一時利用。公開後は分離を再検討 | Firestore REST APIのProject指定 | 購入有効化不可、Firestore処理不可 | Testデータを公開前に全削除する前提。別Projectが原則として安全 |
-| `FIREBASE_CLIENT_EMAIL` | Secret | 上記Projectで使うサービスアカウント | 今回は一時利用。公開後は分離を再検討 | サービスアカウントJWTの`iss` | 購入有効化不可、Firestore処理不可 | 実値を資料・スクリーンショットへ残さない |
-| `FIREBASE_PRIVATE_KEY` | Secret | 上記サービスアカウントのPrivate Key | Production鍵と分離 | JWT署名、Firestore REST API認証 | 購入有効化不可、Firestore処理不可 | JSON全体ではなく鍵の値だけを登録。`\\n`は実改行へ変換される |
+| `FIREBASE_PROJECT_ID` | 未登録（削除済み） | なし | Productionだけが既存Firebase Projectを使用 | Firestore REST APIのProject指定 | Test WorkerからFirestoreへ接続不可 | Production FirestoreへのTest接続遮断のため削除。再登録しない |
+| `FIREBASE_CLIENT_EMAIL` | 未登録（削除済み） | なし | Productionだけがサービスアカウントを使用 | サービスアカウントJWTの`iss` | Test WorkerからFirestoreへ接続不可 | Production FirestoreへのTest接続遮断のため削除。再登録しない |
+| `FIREBASE_PRIVATE_KEY` | 未登録（削除済み） | なし | ProductionだけがPrivate Keyを使用 | JWT署名、Firestore REST API認証 | Test WorkerからFirestoreへ接続不可 | Production FirestoreへのTest接続遮断のため削除。再登録しない |
 | `REPORT_ACCESS_TOKEN_SECRET` | Secret | Test専用に安全な乱数で生成 | Production値と必ず分離 | access tokenのHMAC-SHA256、所有証明 | 32文字未満または未設定なら購入有効化不可。閲覧・購入状態確認も失敗 | 32文字以上。リポジトリ、ログ、画面共有へ残さない |
 | `STRIPE_SECRET_KEY` | Secret | Stripe DashboardのTest Mode Secret Key | Live Mode Keyと分離 | Price検証、Checkout Session作成、line item取得 | 購入有効化不可。Webhookでline item取得不可 | Test Mode表示を確認して取得 |
 | `STRIPE_WEBHOOK_SECRET` | Secret | Cloudflare Test Worker用Webhook endpointの署名Secret | Production endpointのSecretと分離 | `Stripe-Signature`のWeb Crypto検証 | 購入有効化不可、`/api/webhook`は503 | Test endpointの設定後に登録済み。Productionでは別のSecretを使う |
@@ -80,10 +80,10 @@
 | `diagnosisResults` | 回答snapshot、購入状態、Checkout情報、有料レポート、期限 | 必須 |
 | `diagnosisSessionIndex` | 同一診断sessionの冪等性。`resultId`を保存 | 必須 |
 | `stripeEvents` | Webhook冪等性、処理リース、Stripe Event IDごとの記録 | 必須 |
-| `resultFeedback` | 旧Vercelのfeedback APIだけが書く | 念のため確認 |
+| `resultFeedback` | Cloudflare Workerの`POST /api/feedback`が書く | 念のため確認 |
 
-- Cloudflare Workerには`/api/feedback`が未移植である。Cloudflare Test E2Eだけなら通常`resultFeedback`は作成されない。
-- 旧Vercel APIを経由した場合は`resultFeedback/{resultId}`が作成される可能性があるため、削除確認対象に含める。
+- Cloudflare Workerには`/api/feedback`が移植済みである。ただしTest WorkerはFirebase接続を遮断済みであるため、今後のTest操作では`resultFeedback`を作成できない。
+- 既存のTest E2Eではfeedbackを送信していない。過去に旧Vercel APIを経由していた場合も含め、削除確認対象に残す。
 
 ## 5. Stripe Test設定と確認結果
 
@@ -133,13 +133,11 @@
 Test環境の構築、E2E、Testデータ削除は完了している。Production公開は、以下を順に完了するまで行わない。
 
 1. `/privacy`のWeb/API提供基盤の表記をCloudflare構成へ修正する（今回の更新で完了）。
-2. Production Firebase Project、Firestore Database、サービスアカウント、最小権限、Security Rulesを確定する。
-3. Productionで使う公開originを決定する。
-4. Stripe Liveの商品、Price、Webhook endpointを作成・照合する。
-5. Cloudflare Production専用のSecretとVariableを登録する。Testの値は流用しない。
-6. Production Workerをデプロイする。
-7. Stripe LiveのE2Eを実施する。
-8. 公開判定を行う。
+2. Production FirebaseのFirestore Database、IAM最小権限、Security Rules、対象コレクションが空であることを人間確認する。
+3. Stripe Liveの商品、Price、Webhook endpointを作成・照合する。
+4. Stripe Live専用SecretをProductionへ登録する。Testの値は流用しない。
+5. Live Checkoutを「支払う」直前まで確認する。実決済はしない。
+6. 公開判定を行う。
 
 今回の更新では、手順1だけを完了扱いにする。手順2以降は未完了である。
 
@@ -205,11 +203,11 @@ Webhook endpointと署名検証確認：確認済み
 PUBLIC_APP_URL確認：確認済み
 Test E2E実施：完了
 Test Firestoreデータ削除：完了
-Production Firebase確定：未確認
-Production公開origin決定：未確認
+Production Firebase Secret登録：完了（IAM／Rules／空コレクションは人間確認待ち）
+Production公開origin決定：完了（Cloudflare Worker標準URL）
 Stripe Live設定：未確認
-Cloudflare Production Secret登録：未実施
-Production Workerデプロイ：未実施
+Cloudflare Production Secret登録：一部完了（Stripe Live 5件は未登録）
+Production Workerデプロイ：完了（購入はfail-closed）
 ```
 
 ## 資料の根拠
