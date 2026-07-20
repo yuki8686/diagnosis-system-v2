@@ -6,6 +6,7 @@ import { webhookResponse, type WebhookDependencies } from "./webhook";
 import { purchaseStatusResponse, type PurchaseStatusDependencies } from "./purchase-status";
 import { paidReportResponse, type PaidReportDependencies } from "./paid-report";
 import { feedbackResponse, type FeedbackDependencies } from "./feedback";
+import { legalResponse } from "./legal";
 
 function apiNotFoundResponse(): Response {
   return new Response(JSON.stringify({ error: "Not Found" }), {
@@ -37,6 +38,7 @@ export async function handleRequest(request: Request, env: Env, dependencies: Wo
   if (pathname === "/api/webhook") return await webhookResponse(request, env, dependencies.webhook);
   if (pathname === "/api/purchase-status") return await purchaseStatusResponse(request, env, dependencies.purchaseStatus);
   if (pathname === "/api/feedback") return await feedbackResponse(request, env, dependencies.feedback);
+  if (pathname === "/api/legal") return legalResponse(request, env);
   const reportMatch = pathname.match(/^\/api\/paid-report\/([A-Za-z0-9_-]{43})$/u);
   if (reportMatch) return await paidReportResponse(request, env, reportMatch[1], dependencies.paidReport);
   if (pathname.startsWith("/api/")) return apiNotFoundResponse();

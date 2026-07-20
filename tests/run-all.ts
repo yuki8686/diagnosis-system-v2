@@ -22,6 +22,7 @@ import "./cloudflare-results-worker.test";
 import "./cloudflare-webhook-worker.test";
 import "./cloudflare-paid-report-worker.test";
 import "./cloudflare-feedback-worker.test";
+import "./cloudflare-legal-worker.test";
 import "./api-http.test";
 import "./type-expression-matrix.test";
 import "./report-engine-e2e.test";

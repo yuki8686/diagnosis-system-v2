@@ -11,6 +11,7 @@
 ## 実装済みのAPI
 
 - `GET /api/offer`
+- `GET /api/legal`
 - `POST /api/results`
 - `POST /api/checkout`
 - `POST /api/webhook`
