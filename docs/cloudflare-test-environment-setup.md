@@ -218,3 +218,13 @@ Production Workerデプロイ：完了（購入はfail-closed）
 - `worker/firestore.ts`: サービスアカウントJWT、Firestore REST API、token hash、保存期限
 - `worker/webhook.ts`: Stripe署名、`checkout.session.completed`、レポート生成状態遷移
 - `worker/paid-report.ts`、`worker/purchase-status.ts`: 閲覧と購入状態確認の公開契約
+
+## 2026-07-20 Production確認補足
+
+この章はTest環境の既存E2E実績を変更せず、Productionで別途確認した範囲を区別して記録する補足である。
+
+- ProductionではLive Checkoutへの遷移まで確認済み。商品名は「本音キャラ診断 詳細レポート」、980円、JPY、一回払いであり、Test Mode表示はない。
+- Live決済、Stripe `checkout.session.completed` Webhook受信、Firestoreへの`paid`保存、有料レポート生成、専用URL発行および閲覧は未実測である。
+- Production Firestoreの残存データは合計5件を確認した。由来不明、paidデータまたは実顧客データの可能性を排除できないため、削除していない。
+- `resultFeedback`件数は未確認であり、0件とは扱わない。
+- 今後のProduction確認で作成するデータは、Production公開状況資料の確認用データ台帳へ記録する。Test環境の確認結果とProductionの実測結果を混同しない。

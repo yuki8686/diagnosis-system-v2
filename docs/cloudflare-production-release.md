@@ -31,38 +31,71 @@ feedbackは結果ID・HMAC所有証明・730日の受付期限を確認し、`re
 
 ## Production Secretの状態
 
-登録済み（値は記録しない）:
+ProductionではFirebase接続、公開origin、法務開示、Production専用report access tokenおよびStripe Live設定を使用している。Secretの名前・値はこの文書に記録しない。
 
-- Firebase接続3件
-- `PUBLIC_APP_URL`
-- `REPORT_ACCESS_TOKEN_SECRET`
-- `LEGAL_DISCLOSURE_MODE`
-- `LEGAL_CONTACT_EMAIL`
+## 2026-07-20 Production確認結果
 
-未登録のため販売を停止している項目:
+- Productionトップページ、法務ページ、`/legal`は正常表示。
+- `npm.cmd run typecheck`は成功。
+- `npm.cmd test`は成功し、全テストが通過。
+- `GET /api/offer`から販売可能状態を取得できる。
+- Live Checkoutへの遷移を確認。商品名は「本音キャラ診断 詳細レポート」、980円、JPY、一回払いであり、Test Mode表示はない。
+- 実決済は未実施。
 
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_LAUNCH_PRICE_ID`
-- `STRIPE_REGULAR_PRICE_ID`
-- `STRIPE_SALE_PRICE_MODE`
+Live決済完了、Stripe `checkout.session.completed` Webhook受信、Firestoreへの`paid`保存、有料レポート生成、専用URL発行および購入者による専用URLからの閲覧は、Live環境で未実測の残存リスクである。不具合としては扱わない。
 
-この状態では`/api/offer`は準備中、`/api/results`と`/api/checkout`はfail-closedで拒否する。
+## Firestore整理結果（2026-07-20）
 
-## Stripe Liveの残作業
+| 項目 | 結果 |
+| --- | --- |
+| 確認された残存データ | 合計5件 |
+| 削除件数 | 0件 |
+| 削除判断 | 由来不明、paidデータまたは実顧客データの可能性を排除できないため削除しない |
+| `resultFeedback`件数 | 未確認。0件とは扱わない |
+| 削除後件数 | 削除未実施のため変化なし。コレクション別の未確認値は補完しない |
 
-Stripe Liveの対象アカウントに本人ログイン後、次を確認・作成する。
+現実装には確認用データを明確に識別するTest／Production識別フィールドやテストフラグがない。作成時刻だけを根拠にFirestoreデータを削除する運用は禁止する。
 
-1. 「本音キャラ診断 詳細レポート（開始記念価格）」、980円、JPY、一回払いの商品とPrice
-2. 「本音キャラ診断 詳細レポート（通常価格）」、1,980円、JPY、一回払いの商品とPrice
-3. `checkout.session.completed`のみを購読する`/api/webhook`向けWebhook endpoint
-4. 上記Live専用の5 SecretをProductionへ登録し、販売モードを`launch`へ設定
+## 今後のProduction確認用データ台帳
 
-Stripe内部の商品名は価格別に分ける。Workerは正式な購入者向け商品名に加え、この2つの内部商品名を許容しつつ、Price ID、金額、JPY、one-timeをサーバー側で照合する。実決済は行わず、Checkoutは「支払う」直前まで確認する。
+Production確認でデータを作成する場合は、次を台帳に記録する。Checkout Session IDまたはStripe Event IDが発生しない確認では、`未発生`と記録する。
 
-## 公開前の人間確認
+| 記録項目 |
+| --- |
+| 実施日時 |
+| 実施者 |
+| 確認目的 |
+| 環境 |
+| `resultId` |
+| `diagnosisSessionIndex`のドキュメントIDまたはsession ID |
+| Checkout Session ID |
+| Stripe Event ID |
+| paid状態 |
+| feedbackの有無 |
+| 削除対象か |
+| 削除実施日時 |
+| 削除確認者 |
+| 備考 |
 
-- FirebaseのFirestore Native Mode、対象4コレクションの空状態、Security Rulesの直接アクセス拒否、サービスアカウントの最小権限
-- Stripe Liveの対象アカウント、価格、通貨、商品、Webhook endpoint、旧Vercel endpointとの二重配送なし
-- Productionでfree resultとfeedbackを作成した場合のデータ削除台帳。公開開始時に0件方針を維持するなら、smoke testの結果とsession indexを関連づけて削除する
-- Live決済、Webhook受信、paid保存、paid report生成・専用URLは未実測であり、Test環境のE2Eを根拠にした残存リスクである
+Secret、access token、所有証明token、秘密鍵は台帳に記録しない。
+
+## Firestore削除ルール
+
+- 作成時刻だけで削除対象と判断しない。
+- `resultId`とsession indexの対応を確認する。
+- paidデータは原則削除しない。
+- 実顧客データの可能性があるもの、由来不明データは削除しない。
+- ワイルドカードやコレクション一括削除を行わない。
+- 削除対象IDを明示した個別削除のみ行う。
+- 確認用データと断定できない場合は、削除せず残す。
+
+## 最終判定
+
+**条件付きで公開継続可能**
+
+条件:
+
+- 初回Live決済を即時監視する。
+- Webhook受信、Firestoreへの`paid`保存、有料レポート生成を確認する。
+- 専用URL発行と購入者による閲覧を確認する。
+- 障害時の購入者への個別対応手段を準備する。
